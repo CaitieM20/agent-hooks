@@ -38,8 +38,8 @@ jobs:
         run: |
           ajv validate --spec=draft2020 -c ajv-formats \
             -s conformance/vectors.schema.json \
-            -r 'spec/draft/schema/*.json' \
-            -r 'spec/draft/schema/agent-context/*.json' \
+            -r 'spec/0.1.0/schema/*.json' \
+            -r 'spec/0.1.0/schema/agent-context/*.json' \
             -d 'conformance/vectors/*.json'
 
   python:

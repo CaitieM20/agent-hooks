@@ -19,11 +19,15 @@
   semantics belong in vectors so all five implementations are pinned
   at once.
 - **Spec and schema together.** Make normative changes in
-  `spec/draft/`. Changes to wire shapes update the draft spec text,
-  the JSON schemas under `spec/draft/schema/`, and the vendored copies
-  (regenerate via `python3 scripts/gen-per-point-schemas.py`; the
-  `drift` check enforces this). Released folders such as
-  `spec/0.1.0/` are immutable; see [spec/README.md](spec/README.md).
+  `spec/draft/`. Changes to wire shapes update the draft spec text and
+  the JSON schemas under `spec/draft/schema/` (regenerate per-point
+  schemas via `python3 scripts/gen-per-point-schemas.py`; the `drift`
+  check enforces this). Released folders such as `spec/0.1.0/` are
+  immutable; see [spec/README.md](spec/README.md).
+- **SDKs are pinned to `spec/0.1.0/` for now.** SDK code, tests,
+  vendored schemas, conformance-vector validation, and version checks
+  read `spec/0.1.0/`. How SDK development should track future
+  specification versions is still to be decided.
 - **All five SDKs.** A contract change is not done until Rust core,
   Python, TypeScript, .NET, and Go agree; the Rust core is the single
   source of truth and the wrappers delegate to it.

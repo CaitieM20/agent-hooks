@@ -67,6 +67,8 @@ specification release version and has no pre-release suffix. It is not
 the wire version: `spec/0.1.0/` defines `agent-hooks/0.1`, and later
 specification releases can keep the same wire version. Released folders
 are immutable. [spec/README.md](spec/README.md) lists every version.
+SDK development is currently pinned to `spec/0.1.0/`; the policy for how
+SDKs track later specification versions is not yet decided.
 
 ## Three independent axes
 
@@ -76,7 +78,7 @@ above), the host declaration contract version
 (the root tag). The Rust core exports `DECLARATION_VERSION` and
 `SUPPORTED_DECLARATION_VERSIONS` next to `SPEC_VERSION`; each other
 SDK exports the same two constants once it gains the loader.
-[spec/draft/DECLARATION-VERSIONS.md](spec/draft/DECLARATION-VERSIONS.md) maps
+[spec/0.1.0/DECLARATION-VERSIONS.md](spec/0.1.0/DECLARATION-VERSIONS.md) maps
 contract versions to schema files and SDK releases to the contract
 versions they accept.
 

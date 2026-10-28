@@ -17,8 +17,10 @@ released specification version.
   declaration contract version, or SDK package versions.
 - Never edit normative content in an existing released folder. Make
   changes in `spec/draft/`, then publish a new version.
-- Keep `spec/draft/` as the implementation source for SDKs, generators,
-  vendored schemas, and conformance tooling.
+- SDK development is currently pinned to `spec/0.1.0/`. Do not retarget
+  SDK code, tests, vendored schemas, conformance-vector validation, or
+  version checks as part of adding a spec version until the project
+  decides how SDKs track specification versions.
 
 ## Steps
 
@@ -74,8 +76,8 @@ released specification version.
 
 8. Update links that point readers to the latest released spec, such as
    `README.md`, `SECURITY.md`, `docs/`, `conformance/CLAIMS.md`, SDK
-   READMEs, and `sdk/python/pyproject.toml`. Leave implementation
-   references and tooling pointed at `spec/draft/`.
+   READMEs, and `sdk/python/pyproject.toml`. Leave SDK implementation
+   references and SDK tooling at their pinned version.
 
    Find candidates with:
 
