@@ -56,8 +56,17 @@ decision, recorded in [RELEASING.md](RELEASING.md).
 Each SDK exports `SPEC_VERSION = "agent-hooks/X.Y"` matching the
 `AgentContext.spec` value it emits and validates.
 
-A new optional artefact under `spec/` with its own schema and new
+A new optional artefact under `spec/draft/` with its own schema and new
 vectors (the host declaration document, spec §7.7) is MINOR.
+
+## Specification folders
+
+Released specification bundles live in `spec/<MAJOR.MINOR.PATCH>/`;
+ongoing work lives in `spec/draft/`. The folder name is the
+specification release version and has no pre-release suffix. It is not
+the wire version: `spec/0.1.0/` defines `agent-hooks/0.1`, and later
+specification releases can keep the same wire version. Released folders
+are immutable. [spec/README.md](spec/README.md) lists every version.
 
 ## Three independent axes
 
@@ -67,7 +76,7 @@ above), the host declaration contract version
 (the root tag). The Rust core exports `DECLARATION_VERSION` and
 `SUPPORTED_DECLARATION_VERSIONS` next to `SPEC_VERSION`; each other
 SDK exports the same two constants once it gains the loader.
-[spec/DECLARATION-VERSIONS.md](spec/DECLARATION-VERSIONS.md) maps
+[spec/draft/DECLARATION-VERSIONS.md](spec/draft/DECLARATION-VERSIONS.md) maps
 contract versions to schema files and SDK releases to the contract
 versions they accept.
 

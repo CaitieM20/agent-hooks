@@ -20,21 +20,26 @@ jobs:
       - name: Validate schemas are well-formed
         run: |
           set -e
-          schemas=(spec/schema/*.json spec/schema/agent-context/*.json conformance/vectors.schema.json)
-          for f in "${schemas[@]}"; do
-            # -r must not include the file under -s (ajv rejects duplicate $id)
-            refs=()
-            for r in "${schemas[@]}"; do
-              [ "$r" = "$f" ] || refs+=(-r "$r")
+          # Validate each specification bundle separately; versions share $id values.
+          for spec_dir in spec/*/; do
+            [ -d "${spec_dir}schema" ] || continue
+            echo "Validating ${spec_dir}schema"
+            schemas=("${spec_dir}"schema/*.json "${spec_dir}"schema/agent-context/*.json conformance/vectors.schema.json)
+            for f in "${schemas[@]}"; do
+              # -r must not include the file under -s (ajv rejects duplicate $id)
+              refs=()
+              for r in "${schemas[@]}"; do
+                [ "$r" = "$f" ] || refs+=(-r "$r")
+              done
+              ajv compile --spec=draft2020 -c ajv-formats -s "$f" "${refs[@]}"
             done
-            ajv compile --spec=draft2020 -c ajv-formats -s "$f" "${refs[@]}"
           done
       - name: Validate vectors against vectors.schema.json
         run: |
           ajv validate --spec=draft2020 -c ajv-formats \
             -s conformance/vectors.schema.json \
-            -r 'spec/schema/*.json' \
-            -r 'spec/schema/agent-context/*.json' \
+            -r 'spec/draft/schema/*.json' \
+            -r 'spec/draft/schema/agent-context/*.json' \
             -d 'conformance/vectors/*.json'
 
   python:
@@ -210,6 +215,8 @@ jobs:
           ./actionlint -color
       - name: Version surfaces agree across SDK manifests
         run: python3 scripts/check-version-consistency.py
+      - name: Specification version folders are complete and indexed
+        run: python3 scripts/check-spec-versions.py
       - name: Source files carry the standard file header
         run: python3 scripts/check-file-headers.py
 

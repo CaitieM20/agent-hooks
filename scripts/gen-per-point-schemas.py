@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft. All rights reserved.
 
-"""Generate spec/schema/agent-context/<interception_point>.schema.json from the master.
+"""Generate spec/draft/schema/agent-context/<interception_point>.schema.json from the master.
 
 Each per-point schema is a closed (additionalProperties: false on the conditional
 payload object) variant of agent-context.schema.json restricted to one
@@ -14,8 +14,9 @@ import json
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MASTER = ROOT / "spec" / "schema" / "agent-context.schema.json"
-OUT = ROOT / "spec" / "schema" / "agent-context"
+SPEC_SCHEMA = ROOT / "spec" / "draft" / "schema"
+MASTER = SPEC_SCHEMA / "agent-context.schema.json"
+OUT = SPEC_SCHEMA / "agent-context"
 
 # interception_point -> (extra conditional required fields beyond the required core, payload $defs to close)
 CONDITIONAL: dict[str, tuple[list[str], list[str]]] = {

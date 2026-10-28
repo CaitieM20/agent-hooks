@@ -45,7 +45,7 @@ jobs:
 
           if echo "$LABELS" | grep -q 'spec:breaking'; then
             bump=$(echo "$changed" | grep -E \
-              '^(spec/AGENT-HOOKS|sdk/rust/core/Cargo\.toml|sdk/python/pyproject\.toml|sdk/typescript/package\.json|sdk/dotnet/src/AgentHooks/.*\.csproj|CHANGELOG\.md)' || true)
+              '^(spec/[^/]+/AGENT-HOOKS|sdk/rust/core/Cargo\.toml|sdk/python/pyproject\.toml|sdk/typescript/package\.json|sdk/dotnet/src/AgentHooks/.*\.csproj|CHANGELOG\.md)' || true)
             if [ -z "$bump" ]; then
               echo "::error::spec:breaking PR must change a version surface (spec header, an SDK manifest, or CHANGELOG.md)"
               exit 1

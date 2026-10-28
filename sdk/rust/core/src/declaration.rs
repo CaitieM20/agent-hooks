@@ -31,7 +31,7 @@
 //! Refusals are construction errors ([`DeclarationError`]), never
 //! verdicts: no emitter exists yet, so there is no record to carry a
 //! §11 reason. The eleven classes are inventoried in
-//! `spec/declaration-errors.json`.
+//! `spec/draft/declaration-errors.json`.
 //!
 //! Nothing in the pipeline drops, clears or defaults a member the
 //! document stated. Defaults fill absent members only, and a document
@@ -2881,7 +2881,7 @@ pub fn resolve(
 }
 
 /// Bring a document from an older accepted minor to `to` (§7.7.2),
-/// one explicit step per version (`spec/DECLARATION-VERSIONS.md`).
+/// one explicit step per version (`spec/draft/DECLARATION-VERSIONS.md`).
 ///
 /// - 1.0 to 1.1: the `declaration` member changes; nothing else. The
 ///   members 1.1 adds (`configuration.failure.on_error`,
@@ -4289,7 +4289,7 @@ mod tests {
     #[test]
     fn mirrored_enums_match_record_schema() {
         let schema: Value = serde_json::from_str(include_str!(
-            "../../../../spec/schema/interception-record.schema.json"
+            "../../../../spec/draft/schema/interception-record.schema.json"
         ))
         .unwrap();
         let profiles: Vec<&str> = schema["properties"]["composition"]["properties"]["profile"]
@@ -4313,7 +4313,7 @@ mod tests {
         // 1.0 alone; the file for the current version names it and
         // every version the loader accepts is covered by some file.
         let schema_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/schema");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/draft/schema");
         let mut covered: Vec<String> = Vec::new();
         for v in SUPPORTED_DECLARATION_VERSIONS {
             let (maj, min) = parse_declaration_version(v).unwrap();
