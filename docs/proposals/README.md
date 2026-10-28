@@ -14,8 +14,8 @@ When maintainers approve the proposal, they assign the next unused
 proposal number and replace `XXX` in both the filename and title
 (for example, `P-009-<slug>.md` and `P-009`). Update links to the
 renamed file as part of acceptance. Rejected proposals retain `P-XXX`;
-existing numbered proposals keep their numbers, and numbers are never reused.
-
+existing numbered proposals keep their numbers, and numbers are never
+reused.
 
 ## When a proposal is required
 
@@ -53,12 +53,12 @@ and review window.
 - **Accepted.** Approved by the maintainers, awaiting implementation
   and applicable conformance coverage. Maintainers assign the proposal's
   permanent number when recording acceptance.
-- **Rejected.** Declined by the maintainers. 
-- **Final.** Complete with implementation and conformance coverage.
-- **Superseded.** Replaced by a newer SEP. The newer SEP marks the
+- **Rejected.** Declined by the maintainers.
+- **Final.** Complete with implementation and applicable conformance
+  coverage.
+- **Superseded.** Replaced by a newer proposal. The newer proposal marks the
   old one `Superseded by P-NNN` and states what survives (see
   P-001/P-002 for the pattern).
-
 
 ## Decision authority and review window
 

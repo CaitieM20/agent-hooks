@@ -1,20 +1,23 @@
 # P-XXX: {Short title naming the design question or change}
 
-- **Status:** Draft | Accepted | Rejected | Final | Superseded 
+- **Status:** Draft | Accepted | Rejected | Final | Superseded
 - **Created:** YYYY-MM-DD
-- **Author(s)**: Name <email> (@github-username)
-- **PR:** https://github.com/modelcontextprotocol/modelcontextprotocol/pull/{NUMBER}
+- **Author(s):** Name `<email>` (@github-username)
+- **PR:** {URL of this proposal's pull request}
 
 See the [proposal process](README.md) for scope, lifecycle, decision
 authority, and review window.
 
 ## Abstract
-Brief (~200 word) technical summary of the proposal. This should be a concise overview that allows readers to quickly understand what this proposal changes. 
+
+Brief (~200 word) technical summary of the proposal. This should be a
+concise overview that allows readers to quickly understand what this
+proposal changes.
 
 ## The gap (Motivation)
 
-Why is this change needed? State the problem, who encounters it, and why the current
-contract is inadequate. 
+Why is this change needed? State the problem, who encounters it, and why
+the current contract is inadequate.
 
 ## Goals and non-goals (optional)
 
@@ -22,8 +25,12 @@ contract is inadequate.
 stays unchanged, especially trust assumptions and host/provider concerns
 outside the Agent Hooks contract.}
 
-## Specification 
-Detailed technical specification of the proposed changes. The specification should describe the syntax and semantics of any new protocol feature in sufficient detail to allow competing, interoperable implementations.
+## Specification
+
+Detailed technical specification of the proposed changes. The
+specification should describe the syntax and semantics of any new
+protocol feature in sufficient detail to allow competing, interoperable
+implementations.
 
 ### Recommended normative semantics
 
@@ -48,14 +55,17 @@ Link authoritative schema files once they exist instead of maintaining
 duplicate adopted schemas here.}
 
 ## Rationale
+
 Explain why particular design decisions were made. This section should:
+
 - Describe alternate designs that were considered
 - Explain why the proposed approach was chosen
 - Reference related work or prior art
 - Document important objections or concerns raised during discussion
 - Provide evidence of consensus within the community
 
-### Options Considered
+### Options considered
+
 #### A. Keep the current contract
 
 {Describe the status quo and how hosts handle the gap today.}
@@ -87,7 +97,6 @@ discussion. Separate evidence or agreement from assumptions.}
 If reopening a decision, name the new evidence that changed it. If
 superseding a proposal, identify what is replaced and what survives.}
 
-
 ## Security and privacy
 
 {Describe changes to trust boundaries, enforcement/fail-closed behavior,
@@ -97,8 +106,9 @@ State mitigations and residual risks; if unchanged, explain why. Report
 actual vulnerabilities privately per [SECURITY.md](../../SECURITY.md),
 not in this proposal.}
 
-## Backward Compatibility
-**Required for SEPs that introduce backward incompatibilities.**
+## Backward compatibility
+
+**Required for proposals that introduce backward incompatibilities.**
 
 {Describe what existing hosts, interceptors, clients, and claims retain
 or lose, how old/new producers and consumers interact, and any migration
