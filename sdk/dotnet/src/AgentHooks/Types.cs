@@ -711,7 +711,7 @@ public sealed record InterceptionRecord(
     /// <summary>Whether the guarded action executes (§6, §8).</summary>
     public bool Proceeds => Mode == EnforcementMode.EvaluateOnly || Verdict.Decision.Permits();
 
-    /// <summary>Wire shape per <c>spec/schema/interception-record.schema.json</c>.
+    /// <summary>Wire shape per <c>spec/schema/generated/interception-record.schema.json</c>.
     /// Mirrors the core's serde serialization: <c>verdicts</c> omitted when
     /// empty; <c>declaration</c>, <c>fold_truncated</c> and
     /// <c>resolved_by</c> omitted when null.</summary>

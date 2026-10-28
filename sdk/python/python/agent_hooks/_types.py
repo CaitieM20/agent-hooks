@@ -690,7 +690,7 @@ class InterceptionRecord:
         return self.verdict.decision.permits
 
     def to_wire(self) -> dict[str, Any]:
-        """Wire shape per ``spec/schema/interception-record.schema.json``.
+        """Wire shape per ``spec/schema/generated/interception-record.schema.json``.
 
         Mirrors the core's serde serialization: ``verdicts`` omitted when
         empty; ``fold_truncated``/``resolved_by`` omitted when ``None``.

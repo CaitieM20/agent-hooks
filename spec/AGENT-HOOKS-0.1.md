@@ -219,8 +219,8 @@ A `AgentContext` is a JSON object. Its schema has four field tiers:
 - **optional** fields are well-known and OPTIONAL.
 - **namespaced** fields are extensions under `extensions.<namespace>`.
 
-The machine-readable schema is `spec/schema/agent-context.schema.json` with
-per-point closed schemas at `spec/schema/agent-context/<interception_point>.schema.json`.
+The machine-readable schema is `spec/schema/generated/agent-context.schema.json` with
+per-point closed schemas at `spec/schema/generated/strict-contexts/<interception_point>.schema.json`.
 
 ### 4.1 Required core
 
@@ -423,7 +423,7 @@ own.
 [Pure Specification]
 
 An interceptor MUST return a JSON object conforming to
-`spec/schema/verdict.schema.json`. Section 5.5 describes an optional
+`spec/schema/generated/verdict.schema.json`. Section 5.5 describes an optional
 transport wrapper; it does not change this in-process return contract.
 
 ```jsonc
@@ -558,7 +558,7 @@ alongside the control decision:
 ```
 
 The machine-readable schema is
-`spec/schema/interceptor-response.schema.json`. The envelope root is
+`spec/schema/generated/interceptor-response.schema.json`. The envelope root is
 closed: only `verdict` and `extensions` are permitted.
 `verdict` is REQUIRED and MUST pass every §5 rule. `extensions`, when
 present, MUST be a JSON object and uses the
@@ -1042,7 +1042,7 @@ recorded by `substituted_for` on the slot's `verdicts` entry;
 A host MAY load its configuration (§7.1, §8, §10.1, §13.1), its
 declared surface (§13.1) and its interceptor bindings from one JSON
 document, the **host declaration**. The document is validated by
-`spec/schema/host-declaration-1.0.schema.json` and by the rules of this
+`spec/schema/generated/host-declaration-1.0.schema.json` and by the rules of this
 section, which the schema cannot express. It selects behaviour the
 host already implements. It MUST NOT add behaviour, load code, or
 widen the surface beyond what the host's code reports. A declaration
@@ -1598,7 +1598,7 @@ where:
   vectors in `conformance/golden/identity.json` pin the exact bytes.
 - `ctx_rc` is the **closed** required+conditional projection of `ctx`
   for its interception point: exactly the fields marked required in
-  the per-point schemas under `spec/schema/agent-context/`, including
+  the per-point schemas under `spec/schema/generated/strict-contexts/`, including
   the nested subfield whitelists (`agent.{id,framework}`,
   `session.{id}`, `model.{id}`, `tool_call.{id,name,args}`,
   `tool_result.{value,is_error}`,

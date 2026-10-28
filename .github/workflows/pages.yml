@@ -28,8 +28,10 @@ jobs:
           cp spec/AGENT-HOOKS-0.1.md docs-site/docs/spec.md
           # Publish the machine-readable schemas so every $id dereferences.
           mkdir -p docs-site/docs/schema/v0.1/agent-context docs-site/docs/schema/v0.1/conformance
-          cp spec/schema/*.json docs-site/docs/schema/v0.1/
-          cp spec/schema/agent-context/*.json docs-site/docs/schema/v0.1/agent-context/
+          # Keep the published agent-context/ URLs even though the source
+          # checkout calls these generated files strict-contexts/.
+          cp spec/schema/generated/*.schema.json docs-site/docs/schema/v0.1/
+          cp spec/schema/generated/strict-contexts/*.schema.json docs-site/docs/schema/v0.1/agent-context/
           cp spec/reserved-reasons.json docs-site/docs/schema/v0.1/
           cp spec/declaration-errors.json docs-site/docs/schema/v0.1/
           cp conformance/vectors.schema.json docs-site/docs/schema/v0.1/conformance/

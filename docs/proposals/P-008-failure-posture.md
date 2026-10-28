@@ -211,13 +211,13 @@ conformant.
 
 ## Adopted schema
 
-- `spec/schema/host-declaration-1.1.schema.json`: a copy of 1.0 with the
+- `spec/schema/generated/host-declaration-1.1.schema.json`: a copy of 1.0 with the
   `declaration` enum set to `agent-hooks-declaration/1.1`,
   `configuration.failure.on_error` and `bindings[].on_error`. The 1.0
   file is unchanged.
-- `spec/schema/interception-record.schema.json`:
+- `spec/schema/generated/interception-record.schema.json`:
   `verdicts[].substituted_for`, an enum over the three §6.3 reasons.
-- `spec/schema/verdict.schema.json`: `warnings[].reason` rejects the
+- `spec/schema/generated/verdict.schema.json`: `warnings[].reason` rejects the
   `host_warning:` prefix.
 - `spec/reserved-warnings.json`: the closed warning inventory.
 - `spec/DECLARATION-VERSIONS.md`: the 1.1 row, the release row and the
