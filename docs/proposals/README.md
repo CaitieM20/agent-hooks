@@ -4,6 +4,16 @@ Significant design decisions are made through written proposals in
 this directory (P-001 through P-008 to date). This file defines when a
 proposal is required, its lifecycle, and who decides.
 
+## Writing a proposal
+
+Copy [TEMPLATE.md](TEMPLATE.md) to `P-NNN-<slug>.md`, replacing `NNN`
+with an unused proposal number and filling in the author guidance.
+Adapt the sections to the question; the template is an authoring aid,
+not an additional approval process. Existing proposals remain useful
+examples: [P-001](P-001-approval-fold-resume.md) frames a focused
+choice, while [P-006](P-006-interceptor-response-envelope.md) develops
+schema, SDK, conformance, security, and compatibility implications.
+
 ## When a proposal is required
 
 Any change in these classes MUST go through a proposal before
@@ -28,10 +38,11 @@ a proposal — ordinary PR review applies (see
 
 `Draft` → `Decided` → (possibly) `Superseded`.
 
-- **Draft.** File `P-NNN-<slug>.md` following the structure of the
-  existing proposals: Status, Raised by, the gap, enumerated options
-  with trade-offs, a recommendation. Neutral framing of alternatives
-  is expected — P-001/P-002 were debated by independent per-option
+- **Draft.** File `P-NNN-<slug>.md` using the
+  [template](TEMPLATE.md) and existing proposals: Status, Raised by,
+  the gap, enumerated options with trade-offs, a recommendation.
+  Neutral framing of alternatives is expected — P-001/P-002 were
+  debated by independent per-option
   advocates before decision, a practice worth keeping for contested
   questions.
 - **Decided.** The Status line records the date, the decision, and any
