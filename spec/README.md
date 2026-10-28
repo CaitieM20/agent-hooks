@@ -31,6 +31,3 @@ allowed.
 The folder version is the specification release version. It is separate
 from the wire version (`agent-hooks/X.Y`), the host declaration contract
 version, and SDK package versions (see [VERSIONING.md](../VERSIONING.md)).
-
-To publish a new version, follow
-[`.github/skills/add-spec-version/SKILL.md`](../.github/skills/add-spec-version/SKILL.md).

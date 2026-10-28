@@ -25,10 +25,8 @@ environment.
    (`0.1.0-alpha`, `0.1.0-beta`), not the tag, and changes only when
    the stage changes.
 
-   When the release publishes a new specification version, follow
-   [the add-spec-version skill](.github/skills/add-spec-version/SKILL.md)
-   to snapshot `spec/draft/` into `spec/<MAJOR.MINOR.PATCH>/` before
-   tagging.
+   When the release publishes a new specification version, snapshot
+   `spec/draft/` into `spec/<MAJOR.MINOR.PATCH>/` before tagging.
 
    Regenerate `sdk/typescript/binding.js` after the bump (`npm run
    build:native` in `sdk/typescript`); the napi version strings it
