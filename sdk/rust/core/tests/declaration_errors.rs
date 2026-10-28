@@ -10,9 +10,10 @@ use agent_hooks::DeclarationErrorClass;
 
 #[test]
 fn declaration_error_classes_match_registry() {
-    let registry: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../spec/0.1.0/declaration-errors.json"))
-            .expect("spec/0.1.0/declaration-errors.json parses");
+    let registry: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../spec/0.1.0/declaration-errors.json"
+    ))
+    .expect("spec/0.1.0/declaration-errors.json parses");
     let registered: Vec<(String, u64)> = registry["classes"]
         .as_array()
         .expect("classes array")

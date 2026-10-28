@@ -54,9 +54,10 @@ fn host_error_variants_match_reserved_reasons_registry() {
 fn host_warning_variants_match_reserved_warnings_registry() {
     let variants = [agent_hooks::HostWarning::ControlFailed];
     let emitted: BTreeSet<String> = variants.iter().map(|v| v.to_string()).collect();
-    let registry: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../spec/0.1.0/reserved-warnings.json"))
-            .expect("spec/0.1.0/reserved-warnings.json parses");
+    let registry: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../spec/0.1.0/reserved-warnings.json"
+    ))
+    .expect("spec/0.1.0/reserved-warnings.json parses");
     let registered: BTreeSet<String> = registry["warnings"]
         .as_array()
         .expect("warnings array")
