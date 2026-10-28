@@ -18,11 +18,15 @@ Each folder is a complete specification bundle:
 
 ## Working on the specification
 
-Make normative changes in `draft/`. SDKs, conformance tooling, and
-generated schemas on `main` track `draft/`.
+Make normative changes in `draft/`. Generated per-point schemas on `main`
+track `draft/`; SDK development is pinned to `0.1.0/` until the project
+decides how SDKs track specification versions.
 
-Released folders are immutable records of a release. Do not change their
-normative content; make the change in `draft/` and release a new version.
+Released folders are immutable records of a release. The `change-class`
+CI check fails a pull request that changes any `MAJOR.MINOR.PATCH`
+folder that already exists on its base branch. Make the change in
+`draft/` and release a new version; adding a new version folder is
+allowed.
 
 The folder version is the specification release version. It is separate
 from the wire version (`agent-hooks/X.Y`), the host declaration contract

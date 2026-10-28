@@ -15,7 +15,8 @@ released specification version.
 - The folder version is the specification release version. Do not
   confuse it with the wire version (`agent-hooks/X.Y`), the host
   declaration contract version, or SDK package versions.
-- Never edit normative content in an existing released folder. Make
+- Never edit an existing released folder. CI fails pull requests that
+  change a version folder already present on the base branch. Make
   changes in `spec/draft/`, then publish a new version.
 - SDK development is currently pinned to `spec/0.1.0/`. Do not retarget
   SDK code, tests, vendored schemas, conformance-vector validation, or
