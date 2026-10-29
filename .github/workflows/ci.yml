@@ -68,6 +68,9 @@ jobs:
         with: { node-version: "22" }
       - run: npm ci
         working-directory: sdk/typescript
+      - name: Schema equivalence handles the generated output directory
+        run: npm run check:schema:equivalence -- --old ../../spec/schema/generated --structural-diff
+        working-directory: sdk/typescript
       - run: cargo fetch --locked
         # napi-cli does not forward --locked; fetching first pins the
         # graph, and the build below resolves offline-consistent.
