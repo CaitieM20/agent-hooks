@@ -247,7 +247,7 @@ function main(): number {
       console.log(`::error::spec/schema/generated/${file} is missing; run npm run generate:schema in sdk/typescript`);
       continue;
     }
-    const actual = readFileSync(path, "utf8");
+    const actual = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
     if (actual !== text) {
       failing++;
       console.log(`::error::spec/schema/generated/${file} differs from the TypeScript source; run npm run generate:schema in sdk/typescript`);
