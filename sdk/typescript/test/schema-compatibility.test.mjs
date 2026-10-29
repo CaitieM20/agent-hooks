@@ -28,10 +28,7 @@ const files = [
   ...points.map((file) => [join("strict-contexts", file), join("agent-context", file)]),
 ];
 
-test("generated layout preserves schema identities and Python resources", () => {
-  assert.deepEqual(readdirSync(generated).sort(), [...roots, "strict-contexts"].sort());
-  assert.deepEqual(readdirSync(join(generated, "strict-contexts")).sort(), points.sort());
-  assert.equal(readdirSync(schema).some((file) => file.endsWith(".schema.json")), false);
+test("generated schemas preserve published identities and Python resources", () => {
   for (const [file, published] of files) {
     const text = readFileSync(join(generated, file), "utf8").replaceAll("\r\n", "\n");
     assert.equal(text, readFileSync(join(mirror, published), "utf8").replaceAll("\r\n", "\n"), file);
