@@ -21,7 +21,7 @@ export type JsonObject = { [key: string]: JsonValue };
  * TypeScript does not enforce the scalar constraints below, exact object keys,
  * or JSON serializability. Validate data at the wire boundary.
  * Hook interfaces are erased at runtime: hook-bound dispatch retains identity.
- * A wire adapter flattens agentContext and hookContext and supplies
+ * A wire adapter flattens agentContext and hook payloads, then supplies
  * interception_point and target.
  */
 export interface AgentContext {
@@ -48,7 +48,6 @@ export interface AgentContext {
 
 // agent_startup: a wire adapter derives target from agent_init.
 export interface AgentStartupContext {
-  context: AgentContext;
   agent_init: {
     tools_registered: string[];
   };
@@ -56,7 +55,6 @@ export interface AgentStartupContext {
 
 // input: a wire adapter derives target from input, not content alone.
 export interface InputContext {
-  context: AgentContext;
   input: {
     content: JsonValue;
     role: "user" | "system" | "external";
@@ -65,7 +63,6 @@ export interface InputContext {
 
 // pre_model_call: a wire adapter derives target from messages, not model.
 export interface PreModelContext {
-  context: AgentContext;
   model: {
     id: string;
   };
@@ -77,7 +74,6 @@ export interface PreModelContext {
 
 // post_model_call: a wire adapter derives target from the entire response.
 export interface PostModelContext {
-  context: AgentContext;
   model: {
     id: string;
   };
@@ -93,19 +89,23 @@ export interface PostModelContext {
 }
 
 // pre_tool_call payload: a wire adapter derives target from tool_call.args.
-export interface PreToolContext<TArgs extends JsonObject = JsonObject> {
+export interface PreToolContext {
   tool_call: {
     /** @minLength 1 */
     id: string;
     /** @minLength 1 */
     name: string;
-    args: TArgs;
+    args: JsonObject;
   };
 }
 
+// Request composition keeps shared metadata beside the hook-specific payload.
+export interface PreToolHookRequest
+  extends HooksRequest,
+    PreToolContext {}
+
 // post_tool_call: a wire adapter derives target from tool_result.value.
 export interface PostToolContext {
-  context: AgentContext;
   tool_call: {
     /** @minLength 1 */
     id: string;
@@ -121,7 +121,6 @@ export interface PostToolContext {
 
 // output: a wire adapter derives target from output, not content alone.
 export interface OutputContext {
-  context: AgentContext;
   output: {
     content: JsonValue;
   };
@@ -129,28 +128,43 @@ export interface OutputContext {
 
 // agent_shutdown: a wire adapter derives target from summary.
 export interface AgentShutdownContext {
-  context: AgentContext;
   summary: {
     reason: "completed" | "error" | "cancelled";
   };
 }
 
 /**
- * Generic request envelope for a hook handler. `hookContext` is intentionally
- * untyped by default; hook-specific requests specialize it.
+ * Generic extension-friendly request envelope. Hook-specific request
+ * interfaces add their required payload properties at the top level.
  */
-export interface HooksRequest<TContext = object> {
+export interface HooksRequest {
   agentContext: AgentContext;
-  hookContext: TContext;
+  [extension: string]: unknown;
 }
 
-/**
- * Generic response envelope. Shared verdict members remain optional as in the
- * existing verdict contract.
- */
-export interface HooksResponse<TVerdict = Verdict> {
-  verdict: TVerdict;
-}
+export interface AgentStartupHookRequest
+  extends HooksRequest,
+    AgentStartupContext {}
+
+export interface InputHookRequest extends HooksRequest, InputContext {}
+
+export interface PreModelHookRequest
+  extends HooksRequest,
+    PreModelContext {}
+
+export interface PostModelHookRequest
+  extends HooksRequest,
+    PostModelContext {}
+
+export interface PostToolHookRequest
+  extends HooksRequest,
+    PostToolContext {}
+
+export interface OutputHookRequest extends HooksRequest, OutputContext {}
+
+export interface AgentShutdownHookRequest
+  extends HooksRequest,
+    AgentShutdownContext {}
 
 export interface VerdictFields {
   reason?: string | null;
@@ -173,7 +187,6 @@ export interface Transform {
 
 /**
  * Current wire-shaped verdict union, included as the generic response default.
- * The pre-tool API specialization below replaces path/value with full args.
  */
 export type Verdict = VerdictFields &
   (
@@ -182,30 +195,32 @@ export type Verdict = VerdictFields &
     | { decision: "transform"; transform: Transform }
   );
 
-/** Request specialization for a pre-tool handler. */
-export interface PreToolHookRequest<
-  TArgs extends JsonObject = JsonObject,
-> extends HooksRequest<PreToolContext<TArgs>> {}
+/** Generic response envelope; specialized responses narrow `verdict`. */
+export interface HooksResponse<TVerdict = Verdict> {
+  verdict: TVerdict;
+}
 
-export type PreToolVerdict<TArgs extends JsonObject = JsonObject> =
-  VerdictFields &
-    (
-      | { decision: "allow" }
-      | { decision: "deny"; approval?: JsonObject }
-      // API-level whole-args replacement; wire adaptation can use $target.
-      | { decision: "transform"; transform: { args: TArgs } }
-    );
+/**
+ * Allow/deny retain the shared verdict fields. At this API level, transform
+ * replaces the complete tool args rather than carrying a wire path/value patch.
+ */
+export type PreToolVerdict = VerdictFields &
+  (
+    | { decision: "allow" }
+    | { decision: "deny"; approval?: JsonObject }
+    | { decision: "transform"; transform: { args: JsonObject } }
+  );
 
 /** Response specialization whose transform replaces the complete tool args. */
-export interface PreToolHookResponse<
-  TArgs extends JsonObject = JsonObject,
-> extends HooksResponse<PreToolVerdict<TArgs>> {}
+export interface PreToolHookResponse
+  extends HooksResponse<PreToolVerdict> {}
 
 export type HooksHandler<
   TRequest extends HooksRequest = HooksRequest,
   TResponse extends HooksResponse = HooksResponse,
 > = (request: TRequest) => TResponse | Promise<TResponse>;
 
-export type PreToolHookHandler<
-  TArgs extends JsonObject = JsonObject,
-> = HooksHandler<PreToolHookRequest<TArgs>, PreToolHookResponse<TArgs>>;
+export type PreToolHookHandler = HooksHandler<
+  PreToolHookRequest,
+  PreToolHookResponse
+>;

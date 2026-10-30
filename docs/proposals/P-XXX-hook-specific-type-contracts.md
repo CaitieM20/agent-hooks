@@ -122,27 +122,28 @@ its generated per-hook schema's required payload fields and omits every
 optional property, including nested members. The shared
 `AgentContext` interface contains only `spec`,
 `timestamp`, `sequence`, `agent`, and `session`, plus reusable JSON type
-aliases. `HooksRequest<TContext = object>` composes it as
-`agentContext: AgentContext` with generic `hookContext: TContext`.
-`PreToolContext<TArgs>` describes the required tool call with typed args;
-`PreToolHookRequest<TArgs>` specializes the generic request with that context.
+aliases. `HooksRequest` contains `agentContext: AgentContext` and an
+`[extension: string]: unknown` index signature. Each hook-specific request
+extends `HooksRequest` and its matching hook-context interface, putting
+required hook payload properties directly beside `agentContext`.
+`PreToolContext` describes the required tool call with `JsonObject` args;
+`PreToolHookRequest` extends `HooksRequest` and `PreToolContext`.
 The hook-specific interfaces use the renamed `PreToolContext`,
 `PostToolContext`, `PreModelContext`, and `PostModelContext` names (without
-`Call`). The other hook request examples retain their earlier
-`context: AgentContext` composition as a parallel sketch.
+`Call`).
 The file is self-contained and can move without changing imports;
 constraint comments do not claim runtime validation.
 
-| Hook interface sketch | Required payload fields (besides `context`) |
-| --- | --- |
-| `AgentStartupContext` | `agent_init: { tools_registered: string[] }` |
-| `InputContext` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
-| `PreModelContext` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
-| `PostModelContext` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
-| `PreToolContext<TArgs>` | `tool_call: { id: string, name: string, args: TArgs }`; `PreToolHookRequest<TArgs>` has separate `agentContext: AgentContext` and `hookContext: PreToolContext<TArgs>` properties |
-| `PostToolContext` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
-| `OutputContext` | `output: { content: JsonValue }` |
-| `AgentShutdownContext` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
+| Hook context | Request interface | Required hook payload fields |
+| --- | --- | --- |
+| `AgentStartupContext` | `AgentStartupHookRequest` | `agent_init: { tools_registered: string[] }` |
+| `InputContext` | `InputHookRequest` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
+| `PreModelContext` | `PreModelHookRequest` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
+| `PostModelContext` | `PostModelHookRequest` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
+| `PreToolContext` | `PreToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }` |
+| `PostToolContext` | `PostToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
+| `OutputContext` | `OutputHookRequest` | `output: { content: JsonValue }` |
+| `AgentShutdownContext` | `AgentShutdownHookRequest` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
 
 `JsonValue` includes `null`: required content/value fields may be null,
 but may not be omitted. `response.tool_calls` remains required even when
@@ -154,17 +155,17 @@ classes or today's flat wire representation. The hook-specific type and
 hook-bound entry point identify the hook, so all omit `interception_point`.
 Each payload already carries the relevant data, so all omit duplicate
 `target`. Interfaces are erased at runtime: dispatch/adapters must retain
-hook identity. A wire adapter would flatten `context` (or `agentContext`
-and `hookContext` for `PreToolHookRequest`), supply the hook discriminator,
-and derive `target` using the existing inventory above.
+hook identity. A wire adapter would flatten each request's `agentContext`
+and hook payload, supply the hook discriminator, and derive `target` using
+the existing inventory above.
 `HooksResponse<TVerdict = Verdict>` wraps the return value as `verdict`.
-`PreToolHookResponse<TArgs>` specializes it with allow, deny, and transform
+`PreToolHookResponse` specializes it with allow, deny, and transform
 verdicts. Existing optional verdict metadata (reason, message, warnings,
 approval on deny, evidence, and result labels) remains available. For this
-high-level API sketch only, the transform body is `{ args: TArgs }`, replacing
-the complete typed arguments rather than exposing a path/value patch.
+high-level API sketch only, the transform body is `{ args: JsonObject }`,
+replacing the complete arguments rather than exposing a path/value patch.
 `HooksHandler` makes the request-to-response return contract explicit, and
-`PreToolHookHandler<TArgs>` binds the specialized request and response.
+`PreToolHookHandler` binds the specialized request and response.
 Mapping that whole-args replacement to the existing wire `$target` transform
 and preserving verdict validation are implementation questions, not wire or
 SDK changes proposed here.
@@ -172,10 +173,11 @@ SDK changes proposed here.
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
 
-The following blocks form one illustrative TypeScript module. They are
-design artifacts, not exported SDK types or replacement authoritative
-schemas. Import paths are relative to this proposal so reviewers can
-compare the existing source directly. Existing scalar validation tags
+The following blocks are a separate alternative sketch of the flat wire
+`AgentContext`, not the extension-friendly hook request API above. They are
+illustrative, not exported SDK types or replacement authoritative schemas.
+Import paths are relative to this proposal so reviewers can compare the
+existing source directly. Existing scalar validation tags
 (formats, patterns, nonnegative integers, bounds) still apply; a
 TypeScript `string` or `number` does not enforce them.
 
