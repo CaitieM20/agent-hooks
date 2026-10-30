@@ -90,13 +90,6 @@ export interface HooksResponse<TTransform = Transform> {
   verdict: Verdict<TTransform>;
 }
 
-/**
- * Placeholder only: hook-specific transform payloads still need design.
- * This does not imply transforms are permitted for every hook; the current
- * spec forbids them for agent_startup and agent_shutdown.
- */
-export type UnresolvedHookTransform = unknown;
-
 // ---------------------------------------------------------------------------
 // Hook: agent_startup
 // ---------------------------------------------------------------------------
@@ -107,7 +100,7 @@ export interface AgentStartupHookRequest extends HooksRequest {
 }
 
 export interface AgentStartupHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<never> {}
 
 // ---------------------------------------------------------------------------
 // Hook: input
@@ -120,7 +113,7 @@ export interface InputHookRequest extends HooksRequest {
 }
 
 export interface InputHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<Transform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: pre_model_call
@@ -136,7 +129,7 @@ export interface PreModelHookRequest extends HooksRequest {
 }
 
 export interface PreModelHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<Transform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: post_model_call
@@ -157,7 +150,7 @@ export interface PostModelHookRequest extends HooksRequest {
 }
 
 export interface PostModelHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<Transform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
@@ -198,7 +191,7 @@ export interface PostToolHookRequest extends HooksRequest {
 }
 
 export interface PostToolHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<Transform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: output
@@ -210,7 +203,7 @@ export interface OutputHookRequest extends HooksRequest {
 }
 
 export interface OutputHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<Transform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: agent_shutdown
@@ -222,4 +215,4 @@ export interface AgentShutdownHookRequest extends HooksRequest {
 }
 
 export interface AgentShutdownHookResponse
-  extends HooksResponse<UnresolvedHookTransform> {}
+  extends HooksResponse<never> {}

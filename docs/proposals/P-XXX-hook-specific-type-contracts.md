@@ -164,15 +164,31 @@ remains available.
 Each hook has a named response extending `HooksResponse`; these definitions
 describe data only, not callback signatures or dispatch behavior.
 `PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
-arguments rather than exposing a path/value patch. The other hooks use
-`UnresolvedHookTransform = unknown` as an explicit placeholder until their
-transform payloads are designed; this does not assert that every hook permits
-transforms. In particular, the current spec forbids transforms for
-`agent_startup` and `agent_shutdown`, and those placeholders do not change
-that rule. Mapping the pre-tool whole-args replacement to the existing wire
-`$target` transform, defining other hooks' transform contracts, and preserving
-verdict validation are open design questions, not wire or SDK changes proposed
-here.
+arguments rather than exposing a path/value patch. This intentionally differs
+from current `pre_tool_call` wire behavior, where a `$target`-rooted path may
+replace the entire args value or a nested location within it.
+
+`input`, `pre_model_call`, `post_model_call`, `post_tool_call`, and `output`
+responses use the existing `Transform` data shape (`path`, optional `value`).
+`$target` is a semantic alias for the request's mapped payload, not a field in
+the request or transform object: respectively `request.input`,
+`request.messages`, `request.response`, `request.tool_result.value`, and
+`request.output`. A path equal to `$target` replaces that entire mapped value;
+descendant paths use the existing dot-member, bracket-index, or bracket-member
+grammar. The currently accepted deprecated `$policy_target` root aliases
+`$target`. These transforms may not modify other request or context fields.
+The host must write the updated target back to its mapped request payload
+(the same semantic relationships as today's wire adapter). An omitted
+`Transform.value` means `null`, as in the existing contract. Unresolvable
+paths or incompatible path segments retain `host_error:transform_invalid`;
+roots outside `$target`/`$policy_target` retain
+`host_error:transform_target_forbidden`. In `evaluate_only` mode the path is
+validated against the target but not applied.
+
+The current spec forbids transforms for `agent_startup` and `agent_shutdown`;
+their response types use `HooksResponse<never>` so those data contracts do not
+permit a transform verdict. These shapes reflect existing behavior and do not
+change the wire contract, SDK, or verdict validation rules.
 
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
