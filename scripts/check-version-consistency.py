@@ -91,7 +91,9 @@ def check_declaration_versions() -> int:
         )
         return 1
     schema = (
-        ROOT / "spec/schema" / f"host-declaration-{current.split('/')[1]}.schema.json"
+        ROOT
+        / "spec/schema/generated"
+        / f"host-declaration-{current.split('/')[1]}.schema.json"
     )
     if not schema.exists():
         print(f"::error::{schema.relative_to(ROOT)} is missing for {current}")

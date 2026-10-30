@@ -20,7 +20,7 @@ jobs:
       - name: Validate schemas are well-formed
         run: |
           set -e
-          schemas=(spec/schema/*.json spec/schema/agent-context/*.json conformance/vectors.schema.json)
+          schemas=(spec/schema/generated/*.schema.json spec/schema/generated/strict-contexts/*.schema.json conformance/vectors.schema.json)
           for f in "${schemas[@]}"; do
             # -r must not include the file under -s (ajv rejects duplicate $id)
             refs=()
@@ -33,8 +33,8 @@ jobs:
         run: |
           ajv validate --spec=draft2020 -c ajv-formats \
             -s conformance/vectors.schema.json \
-            -r 'spec/schema/*.json' \
-            -r 'spec/schema/agent-context/*.json' \
+            -r 'spec/schema/generated/*.schema.json' \
+            -r 'spec/schema/generated/strict-contexts/*.schema.json' \
             -d 'conformance/vectors/*.json'
 
   python:
@@ -67,6 +67,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: "22" }
       - run: npm ci
+        working-directory: sdk/typescript
+      - name: Schema equivalence handles the generated output directory
+        run: npm run check:schema:equivalence -- --old ../../spec/schema/generated --structural-diff
         working-directory: sdk/typescript
       - run: cargo fetch --locked
         # napi-cli does not forward --locked; fetching first pins the

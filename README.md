@@ -233,7 +233,8 @@ in Go; `Spec.Version`, `Declaration.Version` and
 ## Read next
 
 - [`spec/AGENT-HOOKS-0.1.md`](spec/AGENT-HOOKS-0.1.md): the normative
-  text; [`spec/schema/`](spec/schema/) holds the JSON Schemas.
+  text; [`spec/schema/`](spec/schema/) separates editable source from
+  the normative JSON Schemas in [`generated/`](spec/schema/generated/).
 - [`docs/IMPLEMENTING.md`](docs/IMPLEMENTING.md): what it means to
   implement Agent Hooks in a harness or gateway.
 - [`conformance/HARNESS.md`](conformance/HARNESS.md): how to write a
