@@ -164,9 +164,10 @@ export interface PostModelHookRequest
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
 // ---------------------------------------------------------------------------
-export interface PreToolHookTransform {
-  args: JsonObject;
-}
+export type PreToolHookHandler = HooksHandler<
+  PreToolHookRequest,
+  PreToolHookTransform
+>;
 
 export interface PreToolHookRequest extends HooksRequest {
   tool_call: {
@@ -178,16 +179,16 @@ export interface PreToolHookRequest extends HooksRequest {
   };
 }
 
-export type PreToolVerdict = Verdict<PreToolHookTransform>;
-
-/** Response specialization whose transform replaces the complete tool args. */
 export interface PreToolHookResponse
   extends HooksResponse<PreToolHookTransform> {}
 
-export type PreToolHookHandler = HooksHandler<
-  PreToolHookRequest,
-  PreToolHookTransform
->;
+/*
+* Object returned when the Verdict is "transform". For the pre-tool hook, the transform 
+* replaces the complete tool args.
+*/
+export interface PreToolHookTransform {
+  args: JsonObject;
+}
 
 // ---------------------------------------------------------------------------
 // Hook: post_tool_call
