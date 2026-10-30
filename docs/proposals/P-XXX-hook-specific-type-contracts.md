@@ -116,6 +116,13 @@ signature as a new wire requirement.
 
 #### TypeScript schema/type sketch: envelope and payloads
 
+For a standalone, required-only starting point, see
+[`pre-tool-call.contract.ts`](pre-tool-call.contract.ts). This initial
+design sketch follows the generated `pre_tool_call` schema, omits every
+optional property (including nested properties), and documents scalar
+constraints without claiming runtime validation. Its `target` remains any
+JSON, as in the schema; the stronger target refinement below is a proposal.
+
 The following blocks form one illustrative TypeScript module. They are
 design artifacts, not exported SDK types or replacement authoritative
 schemas. Import paths are relative to this proposal so reviewers can
