@@ -51,8 +51,19 @@ export interface AgentContext {
  * and each hook's required payload properties are all top-level.
  */
 export interface HooksRequest extends AgentContext {
+  interception_point: HookInterceptionPoint;
   [extension: string]: unknown;
 }
+
+export type HookInterceptionPoint =
+  | "agent_startup"
+  | "input"
+  | "pre_model_call"
+  | "post_model_call"
+  | "pre_tool_call"
+  | "post_tool_call"
+  | "output"
+  | "agent_shutdown";
 
 export interface VerdictFields {
   reason?: string | null;
@@ -96,6 +107,7 @@ export interface HooksResponse<TTransform> {
 // Hook: agent_startup
 // ---------------------------------------------------------------------------
 export interface AgentStartupHookRequest extends HooksRequest {
+  interception_point: "agent_startup";
   agent_init: {
     tools_registered: string[];
   };
@@ -109,6 +121,7 @@ export interface AgentStartupHookResponse {
 // Hook: input
 // ---------------------------------------------------------------------------
 export interface InputHookRequest extends HooksRequest {
+  interception_point: "input";
   input: {
     content: JsonValue;
     role: "user" | "system" | "external";
@@ -127,6 +140,7 @@ export interface InputHookResponse
 // Hook: pre_model_call
 // ---------------------------------------------------------------------------
 export interface PreModelHookRequest extends HooksRequest {
+  interception_point: "pre_model_call";
   model: {
     id: string;
   };
@@ -148,6 +162,7 @@ export interface PreModelHookResponse
 // Hook: post_model_call
 // ---------------------------------------------------------------------------
 export interface PostModelHookRequest extends HooksRequest {
+  interception_point: "post_model_call";
   model: {
     id: string;
   };
@@ -174,6 +189,7 @@ export interface PostModelHookResponse
 // Hook: pre_tool_call
 // ---------------------------------------------------------------------------
 export interface PreToolHookRequest extends HooksRequest {
+  interception_point: "pre_tool_call";
   tool_call: {
     /** @minLength 1 */
     id: string;
@@ -195,6 +211,7 @@ export interface PreToolHookResponse
 // Hook: post_tool_call
 // ---------------------------------------------------------------------------
 export interface PostToolHookRequest extends HooksRequest {
+  interception_point: "post_tool_call";
   tool_call: {
     /** @minLength 1 */
     id: string;
@@ -220,6 +237,7 @@ export interface PostToolHookResponse
 // Hook: output
 // ---------------------------------------------------------------------------
 export interface OutputHookRequest extends HooksRequest {
+  interception_point: "output";
   output: {
     content: JsonValue;
   };
@@ -237,6 +255,7 @@ export interface OutputHookResponse
 // Hook: agent_shutdown
 // ---------------------------------------------------------------------------
 export interface AgentShutdownHookRequest extends HooksRequest {
+  interception_point: "agent_shutdown";
   summary: {
     reason: "completed" | "error" | "cancelled";
   };

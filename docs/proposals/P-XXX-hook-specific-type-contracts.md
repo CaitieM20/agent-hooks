@@ -122,13 +122,16 @@ its generated per-hook schema's required payload fields and omits every
 optional property, including nested members. The shared
 `AgentContext` interface contains only `spec`,
 `timestamp`, `sequence`, `agent`, and `session`, plus reusable JSON type
-aliases. `HooksRequest` extends `AgentContext` and adds an
+aliases. `HooksRequest` extends `AgentContext`, requires an
+`interception_point: HookInterceptionPoint` discriminator, and adds an
 `[extension: string]: unknown` index signature. Each hook-specific request
 extends `HooksRequest`, so the shared metadata and required hook payload
 properties are all at the request root; there are no separate hook-context
-interfaces. This reuses the shared metadata type without adding a nested
-`agentContext` property, keeping the proposed example closer to today's flat
-wire layout. The file is self-contained and can move without changing imports;
+interfaces. Each hook further narrows `interception_point` to its exact
+literal. This keeps the explicit hook identity even if a transport could infer
+it from the paired type; the redundancy is retained for transport-independent
+clarity. Shared metadata remains flat, without a nested `agentContext`
+property. The file is self-contained and can move without changing imports;
 constraint comments do not claim runtime validation.
 
 | Request interface | Required hook payload fields |
@@ -148,12 +151,13 @@ empty; its nested optional `id` is omitted, unlike the required nonempty
 `tool_call.id` at the two tool hooks. No new defaults are introduced.
 
 These are type/interface-only API composition experiments, not runtime
-classes. The proposed request is flat like today's wire representation, but
-its hook-specific type and hook-bound entry point identify the hook, so all
-omit `interception_point`. Each payload already carries the relevant data, so
-all omit duplicate `target`. Interfaces are erased at runtime:
-dispatch/adapters must retain hook identity. A wire adapter would supply the
-hook discriminator and derive `target` using the existing inventory above.
+classes. The proposed request is flat like today's wire representation and
+retains the explicit `interception_point` discriminator, narrowed to a
+per-hook literal. This is intentionally redundant with the hook-specific
+request type and can be retained or omitted by a future transport decision.
+Each payload already carries the relevant data, so all omit duplicate
+`target`. Interfaces are erased at runtime: dispatch/adapters must still
+preserve hook identity and derive `target` using the existing inventory above.
 `Verdict<TTransform>` centralizes the only three decisions
 (`allow`, `deny`, `transform`) together with shared `VerdictFields`.
 `HooksResponse<TTransform>` wraps
@@ -215,9 +219,9 @@ The existing-side request and responses are validated against the checked-in
 schemas; the proposed-side JSON illustrates the TypeScript sketch only, not
 output from or validation against a new JSON Schema. The current flat request includes
 `interception_point: "pre_tool_call"` and `target` matching `tool_call.args`;
-the proposed flat request also has top-level `spec`, `timestamp`, `sequence`,
-`agent`, `session`, and `tool_call`, but omits those wire fields. For
-transform, the current `{ path: "$target", value: ... }`
+the proposed flat request has top-level `spec`, `interception_point`,
+`timestamp`, `sequence`, `agent`, `session`, and `tool_call`, but omits
+`target`. For transform, the current `{ path: "$target", value: ... }`
 whole-target replacement corresponds in intent to the proposed
 `{ args: ... }` replacement.
 
@@ -423,10 +427,11 @@ behavior should be weakened by a typed facade.
 This draft changes **no schema files, wire members, inventories, or
 published schema URLs**. The common envelope and hook payloads remain
 flat in the proposed data contract; the type maps above do not introduce a
-nested `agentContext` or `payload` wrapper. The required-only artifact omits
-duplicate hook/target fields; at the existing wire boundary an explicit
-adapter would supply the hook discriminator and derive `target` from the
-hook's associated payload.
+nested `agentContext` or `payload` wrapper. The required-only artifact
+retains an explicit per-hook `interception_point` but omits duplicate
+`target`; at the existing wire boundary an explicit adapter derives `target`
+from the hook's associated payload. Retaining or removing the discriminator
+can be decided based on transport needs.
 
 A subsequent agreed design could derive SDK-facing hook variants from
 the existing TypeScript schema source and generator pipeline. It would

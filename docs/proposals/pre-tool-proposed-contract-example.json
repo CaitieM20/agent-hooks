@@ -17,6 +17,7 @@
   },
   "request": {
     "spec": "agent-hooks/0.1",
+    "interception_point": "pre_tool_call",
     "timestamp": "2026-10-30T12:00:00Z",
     "sequence": 7,
     "agent": {
