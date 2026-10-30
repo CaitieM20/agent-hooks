@@ -215,15 +215,21 @@ and
 [`pre-tool-proposed-contract-example.json`](pre-tool-proposed-contract-example.json)
 are separate example-instance files for side-by-side comparison. They use the
 same tool call and include allow, deny, and whole-args replacement examples.
-The existing-side request and responses are validated against the checked-in
-schemas; the proposed-side JSON illustrates the TypeScript sketch only, not
-output from or validation against a new JSON Schema. The current flat request includes
+The existing-side request validates against the generated strict pre-tool
+schema, and its bare response verdicts validate against `verdict.schema.json`.
+These bare verdicts represent the in-process verdict contract. The proposed
+`HooksResponse` uses a `{ verdict }` envelope; separately, the current hosted
+`interceptor-response` gate accepts either bare verdicts or the transport
+envelope with optional extensions under §5.5. The proposed-side JSON
+illustrates the TypeScript sketch only, not output from or validation against
+a new JSON Schema. The current flat request includes
 `interception_point: "pre_tool_call"` and `target` matching `tool_call.args`;
 the proposed flat request has top-level `spec`, `interception_point`,
 `timestamp`, `sequence`, `agent`, `session`, and `tool_call`, but omits
-`target`. For transform, the current `{ path: "$target", value: ... }`
-whole-target replacement corresponds in intent to the proposed
-`{ args: ... }` replacement.
+`target`. For transform, the current bare verdict's
+`{ path: "$target", value: ... }` whole-target replacement corresponds in
+intent to the proposed response envelope's `{ verdict: { transform: { args } } }`
+whole-args replacement.
 
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
