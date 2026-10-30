@@ -38,25 +38,19 @@
   },
   "responses": {
     "allow": {
-      "verdict": {
-        "decision": "allow"
-      }
+      "decision": "allow"
     },
     "deny": {
-      "verdict": {
-        "decision": "deny",
-        "reason": "blocked_by_policy"
-      }
+      "decision": "deny",
+      "reason": "blocked_by_policy"
     },
     "transform": {
-      "verdict": {
-        "decision": "transform",
-        "transform": {
-          "args": {
-            "path": "src/config.json",
-            "dry_run": false,
-            "format": "json"
-          }
+      "decision": "transform",
+      "transform": {
+        "args": {
+          "path": "src/config.json",
+          "dry_run": false,
+          "format": "json"
         }
       }
     }

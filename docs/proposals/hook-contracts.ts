@@ -98,10 +98,8 @@ export type Verdict<TTransform> =
   | NonTransformVerdict
   | TransformVerdict<TTransform>;
 
-/** Generic data response envelope; specialized responses narrow `verdict`. */
-export interface HooksResponse<TTransform> {
-  verdict: Verdict<TTransform>;
-}
+/** Core response is the verdict itself; hosted transport envelopes are separate. */
+export type HooksResponse<TTransform> = Verdict<TTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: agent_startup
@@ -113,9 +111,7 @@ export interface AgentStartupHookRequest extends HooksRequest {
   };
 }
 
-export interface AgentStartupHookResponse {
-  verdict: NonTransformVerdict;
-}
+export type AgentStartupHookResponse = NonTransformVerdict;
 
 // ---------------------------------------------------------------------------
 // Hook: input
@@ -133,8 +129,7 @@ export interface InputHookTransform {
   input: InputHookRequest["input"];
 }
 
-export interface InputHookResponse
-  extends HooksResponse<InputHookTransform> {}
+export type InputHookResponse = HooksResponse<InputHookTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: pre_model_call
@@ -155,8 +150,7 @@ export interface PreModelHookTransform {
   messages: PreModelHookRequest["messages"];
 }
 
-export interface PreModelHookResponse
-  extends HooksResponse<PreModelHookTransform> {}
+export type PreModelHookResponse = HooksResponse<PreModelHookTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: post_model_call
@@ -182,8 +176,7 @@ export interface PostModelHookTransform {
   response: PostModelHookRequest["response"];
 }
 
-export interface PostModelHookResponse
-  extends HooksResponse<PostModelHookTransform> {}
+export type PostModelHookResponse = HooksResponse<PostModelHookTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
@@ -204,8 +197,7 @@ export interface PreToolHookTransform {
   args: PreToolHookRequest["tool_call"]["args"];
 }
 
-export interface PreToolHookResponse
-  extends HooksResponse<PreToolHookTransform> {}
+export type PreToolHookResponse = HooksResponse<PreToolHookTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: post_tool_call
@@ -230,8 +222,7 @@ export interface PostToolHookTransform {
   value: PostToolHookRequest["tool_result"]["value"];
 }
 
-export interface PostToolHookResponse
-  extends HooksResponse<PostToolHookTransform> {}
+export type PostToolHookResponse = HooksResponse<PostToolHookTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: output
@@ -248,8 +239,7 @@ export interface OutputHookTransform {
   output: OutputHookRequest["output"];
 }
 
-export interface OutputHookResponse
-  extends HooksResponse<OutputHookTransform> {}
+export type OutputHookResponse = HooksResponse<OutputHookTransform>;
 
 // ---------------------------------------------------------------------------
 // Hook: agent_shutdown
@@ -261,9 +251,7 @@ export interface AgentShutdownHookRequest extends HooksRequest {
   };
 }
 
-export interface AgentShutdownHookResponse {
-  verdict: NonTransformVerdict;
-}
+export type AgentShutdownHookResponse = NonTransformVerdict;
 
 // ===========================================================================
 // SDK-facing handler pairing (separate from serialized data contracts)

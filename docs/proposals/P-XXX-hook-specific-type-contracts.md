@@ -160,20 +160,21 @@ Each payload already carries the relevant data, so all omit duplicate
 preserve hook identity and derive `target` using the existing inventory above.
 `Verdict<TTransform>` centralizes the only three decisions
 (`allow`, `deny`, `transform`) together with shared `VerdictFields`.
-`HooksResponse<TTransform>` wraps
-`verdict: Verdict<TTransform>`; its generic specializes only the transform
+`HooksResponse<TTransform>` aliases `Verdict<TTransform>`, so the core
+response itself is the verdict; its generic specializes only the transform
 payload and cannot add decisions. Existing optional verdict metadata
 (reason, message, warnings, approval on deny, evidence, and result labels)
 remains available. The shared `AllowVerdict`, `DenyVerdict`, and
 `TransformVerdict<TTransform>` compose into `Verdict<TTransform>`, while
 `NonTransformVerdict` contains only allow/deny.
 
-Each hook has a named response using the shared verdict model; transformable
-hooks extend `HooksResponse`, while startup and shutdown responses directly
-carry `NonTransformVerdict`. These definitions describe the data contract. A
-separate SDK-facing section pairs each request with its matching response
-using a synchronous `HookHandler<TRequest, TResponse>` signature. This
-illustrates the type pairing only; execution and asynchronous scheduling
+Each hook response aliases the shared verdict model with its named transform
+payload; startup and shutdown responses alias `NonTransformVerdict`. These
+definitions describe the core data contract. The bare in-process return shape
+matches existing verdict behavior; transport envelopes are a separate hosted
+concern. A separate SDK-facing section pairs each request with its matching
+response using a synchronous `HookHandler<TRequest, TResponse>` signature.
+This illustrates the type pairing only; execution and asynchronous scheduling
 remain SDK decisions outside this contract sketch.
 Each of the six transformable hooks has a named whole-value replacement
 type. The transform object contains the writable request slice, not a
@@ -217,10 +218,12 @@ are separate example-instance files for side-by-side comparison. They use the
 same tool call and include allow, deny, and whole-args replacement examples.
 The existing-side request validates against the generated strict pre-tool
 schema, and its bare response verdicts validate against `verdict.schema.json`.
-These bare verdicts represent the in-process verdict contract. The proposed
-`HooksResponse` uses a `{ verdict }` envelope; separately, the current hosted
-`interceptor-response` gate accepts either bare verdicts or the transport
-envelope with optional extensions under §5.5. The proposed-side JSON
+These bare verdicts represent the in-process verdict contract. Proposed
+`HooksResponse` examples are also bare verdicts, preserving that return shape;
+the alias adds no `{ verdict }` wrapper. Hosted `InterceptorResponse`
+transport envelopes for extensions/receipts remain a separate concern: the
+current `interceptor-response` gate accepts bare verdicts or an envelope with
+optional extensions under §5.5. The proposed-side JSON
 illustrates the TypeScript sketch only, not output from or validation against
 a new JSON Schema. The current flat request includes
 `interception_point: "pre_tool_call"` and `target` matching `tool_call.args`;
@@ -228,8 +231,8 @@ the proposed flat request has top-level `spec`, `interception_point`,
 `timestamp`, `sequence`, `agent`, `session`, and `tool_call`, but omits
 `target`. For transform, the current bare verdict's
 `{ path: "$target", value: ... }` whole-target replacement corresponds in
-intent to the proposed response envelope's `{ verdict: { transform: { args } } }`
-whole-args replacement.
+intent to the proposed bare verdict's `{ transform: { args } }` whole-args
+replacement.
 
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
@@ -600,7 +603,7 @@ contexts. Python, .NET, and Go need idiomatic hook variants/builders and
 runtime parity if checks change; Rust needs an equivalent safe view, not
 necessarily identical generic syntax. These are implementation surfaces
 to assess, not claims that each language currently has the same typing gap.
-Verdict parsing, response envelopes, composition profiles, failure posture,
+Verdict parsing, hosted response envelopes, composition profiles, failure posture,
 approval resolution, identity providers, and record shape stay unchanged
 unless a later explicit decision says otherwise.
 
