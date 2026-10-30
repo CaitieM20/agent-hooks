@@ -46,93 +46,6 @@ export interface AgentContext {
   };
 }
 
-// agent_startup: a wire adapter derives target from agent_init.
-export interface AgentStartupContext {
-  agent_init: {
-    tools_registered: string[];
-  };
-}
-
-// input: a wire adapter derives target from input, not content alone.
-export interface InputContext {
-  input: {
-    content: JsonValue;
-    role: "user" | "system" | "external";
-  };
-}
-
-// pre_model_call: a wire adapter derives target from messages, not model.
-export interface PreModelContext {
-  model: {
-    id: string;
-  };
-  messages: {
-    role: string;
-    content: JsonValue;
-  }[];
-}
-
-// post_model_call: a wire adapter derives target from the entire response.
-export interface PostModelContext {
-  model: {
-    id: string;
-  };
-  response: {
-    content: JsonValue;
-    // Required even when empty; the schema's optional tool-call id is omitted.
-    tool_calls: {
-      name: string;
-      args: JsonObject;
-    }[];
-    finish_reason: string;
-  };
-}
-
-// pre_tool_call payload: a wire adapter derives target from tool_call.args.
-export interface PreToolContext {
-  tool_call: {
-    /** @minLength 1 */
-    id: string;
-    /** @minLength 1 */
-    name: string;
-    args: JsonObject;
-  };
-}
-
-// Request composition keeps shared metadata beside the hook-specific payload.
-export interface PreToolHookRequest
-  extends HooksRequest,
-    PreToolContext {}
-
-// post_tool_call: a wire adapter derives target from tool_result.value.
-export interface PostToolContext {
-  tool_call: {
-    /** @minLength 1 */
-    id: string;
-    /** @minLength 1 */
-    name: string;
-    args: JsonObject;
-  };
-  tool_result: {
-    value: JsonValue;
-    is_error: boolean;
-  };
-}
-
-// output: a wire adapter derives target from output, not content alone.
-export interface OutputContext {
-  output: {
-    content: JsonValue;
-  };
-}
-
-// agent_shutdown: a wire adapter derives target from summary.
-export interface AgentShutdownContext {
-  summary: {
-    reason: "completed" | "error" | "cancelled";
-  };
-}
-
 /**
  * Generic extension-friendly request envelope. Hook-specific request
  * interfaces add their required payload properties at the top level.
@@ -141,30 +54,6 @@ export interface HooksRequest {
   agentContext: AgentContext;
   [extension: string]: unknown;
 }
-
-export interface AgentStartupHookRequest
-  extends HooksRequest,
-    AgentStartupContext {}
-
-export interface InputHookRequest extends HooksRequest, InputContext {}
-
-export interface PreModelHookRequest
-  extends HooksRequest,
-    PreModelContext {}
-
-export interface PostModelHookRequest
-  extends HooksRequest,
-    PostModelContext {}
-
-export interface PostToolHookRequest
-  extends HooksRequest,
-    PostToolContext {}
-
-export interface OutputHookRequest extends HooksRequest, OutputContext {}
-
-export interface AgentShutdownHookRequest
-  extends HooksRequest,
-    AgentShutdownContext {}
 
 export interface VerdictFields {
   reason?: string | null;
@@ -200,6 +89,82 @@ export interface HooksResponse<TVerdict = Verdict> {
   verdict: TVerdict;
 }
 
+export type HooksHandler<
+  TRequest extends HooksRequest = HooksRequest,
+  TResponse extends HooksResponse = HooksResponse,
+> = (request: TRequest) => TResponse | Promise<TResponse>;
+
+// agent_startup
+export interface AgentStartupContext {
+  agent_init: {
+    tools_registered: string[];
+  };
+}
+
+export interface AgentStartupHookRequest
+  extends HooksRequest,
+    AgentStartupContext {}
+
+// input
+export interface InputContext {
+  input: {
+    content: JsonValue;
+    role: "user" | "system" | "external";
+  };
+}
+
+export interface InputHookRequest extends HooksRequest, InputContext {}
+
+// pre_model_call
+export interface PreModelContext {
+  model: {
+    id: string;
+  };
+  messages: {
+    role: string;
+    content: JsonValue;
+  }[];
+}
+
+export interface PreModelHookRequest
+  extends HooksRequest,
+    PreModelContext {}
+
+// post_model_call
+export interface PostModelContext {
+  model: {
+    id: string;
+  };
+  response: {
+    content: JsonValue;
+    // Required even when empty; the schema's optional tool-call id is omitted.
+    tool_calls: {
+      name: string;
+      args: JsonObject;
+    }[];
+    finish_reason: string;
+  };
+}
+
+export interface PostModelHookRequest
+  extends HooksRequest,
+    PostModelContext {}
+
+// pre_tool_call
+export interface PreToolContext {
+  tool_call: {
+    /** @minLength 1 */
+    id: string;
+    /** @minLength 1 */
+    name: string;
+    args: JsonObject;
+  };
+}
+
+export interface PreToolHookRequest
+  extends HooksRequest,
+    PreToolContext {}
+
 /**
  * Allow/deny retain the shared verdict fields. At this API level, transform
  * replaces the complete tool args rather than carrying a wire path/value patch.
@@ -215,12 +180,46 @@ export type PreToolVerdict = VerdictFields &
 export interface PreToolHookResponse
   extends HooksResponse<PreToolVerdict> {}
 
-export type HooksHandler<
-  TRequest extends HooksRequest = HooksRequest,
-  TResponse extends HooksResponse = HooksResponse,
-> = (request: TRequest) => TResponse | Promise<TResponse>;
-
 export type PreToolHookHandler = HooksHandler<
   PreToolHookRequest,
   PreToolHookResponse
 >;
+
+// post_tool_call
+export interface PostToolContext {
+  tool_call: {
+    /** @minLength 1 */
+    id: string;
+    /** @minLength 1 */
+    name: string;
+    args: JsonObject;
+  };
+  tool_result: {
+    value: JsonValue;
+    is_error: boolean;
+  };
+}
+
+export interface PostToolHookRequest
+  extends HooksRequest,
+    PostToolContext {}
+
+// output
+export interface OutputContext {
+  output: {
+    content: JsonValue;
+  };
+}
+
+export interface OutputHookRequest extends HooksRequest, OutputContext {}
+
+// agent_shutdown
+export interface AgentShutdownContext {
+  summary: {
+    reason: "completed" | "error" | "cancelled";
+  };
+}
+
+export interface AgentShutdownHookRequest
+  extends HooksRequest,
+    AgentShutdownContext {}
