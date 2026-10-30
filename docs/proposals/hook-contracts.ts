@@ -94,7 +94,9 @@ export type HooksHandler<
   TResponse extends HooksResponse = HooksResponse,
 > = (request: TRequest) => TResponse | Promise<TResponse>;
 
-// agent_startup
+// ---------------------------------------------------------------------------
+// Hook: agent_startup
+// ---------------------------------------------------------------------------
 export interface AgentStartupContext {
   agent_init: {
     tools_registered: string[];
@@ -105,7 +107,9 @@ export interface AgentStartupHookRequest
   extends HooksRequest,
     AgentStartupContext {}
 
-// input
+// ---------------------------------------------------------------------------
+// Hook: input
+// ---------------------------------------------------------------------------
 export interface InputContext {
   input: {
     content: JsonValue;
@@ -115,7 +119,9 @@ export interface InputContext {
 
 export interface InputHookRequest extends HooksRequest, InputContext {}
 
-// pre_model_call
+// ---------------------------------------------------------------------------
+// Hook: pre_model_call
+// ---------------------------------------------------------------------------
 export interface PreModelContext {
   model: {
     id: string;
@@ -130,7 +136,9 @@ export interface PreModelHookRequest
   extends HooksRequest,
     PreModelContext {}
 
-// post_model_call
+// ---------------------------------------------------------------------------
+// Hook: post_model_call
+// ---------------------------------------------------------------------------
 export interface PostModelContext {
   model: {
     id: string;
@@ -150,7 +158,9 @@ export interface PostModelHookRequest
   extends HooksRequest,
     PostModelContext {}
 
-// pre_tool_call
+// ---------------------------------------------------------------------------
+// Hook: pre_tool_call
+// ---------------------------------------------------------------------------
 export interface PreToolContext {
   tool_call: {
     /** @minLength 1 */
@@ -185,7 +195,9 @@ export type PreToolHookHandler = HooksHandler<
   PreToolHookResponse
 >;
 
-// post_tool_call
+// ---------------------------------------------------------------------------
+// Hook: post_tool_call
+// ---------------------------------------------------------------------------
 export interface PostToolContext {
   tool_call: {
     /** @minLength 1 */
@@ -204,7 +216,9 @@ export interface PostToolHookRequest
   extends HooksRequest,
     PostToolContext {}
 
-// output
+// ---------------------------------------------------------------------------
+// Hook: output
+// ---------------------------------------------------------------------------
 export interface OutputContext {
   output: {
     content: JsonValue;
@@ -213,7 +227,9 @@ export interface OutputContext {
 
 export interface OutputHookRequest extends HooksRequest, OutputContext {}
 
-// agent_shutdown
+// ---------------------------------------------------------------------------
+// Hook: agent_shutdown
+// ---------------------------------------------------------------------------
 export interface AgentShutdownContext {
   summary: {
     reason: "completed" | "error" | "cancelled";
