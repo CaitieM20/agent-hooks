@@ -97,35 +97,52 @@ export type HooksHandler<
   request: TRequest,
 ) => HooksResponse<TTransform> | Promise<HooksResponse<TTransform>>;
 
+/**
+ * Placeholder only: hook-specific transform payloads still need design.
+ * This does not imply transforms are permitted for every hook; the current
+ * spec forbids them for agent_startup and agent_shutdown.
+ */
+export type UnresolvedHookTransform = unknown;
+
 // ---------------------------------------------------------------------------
 // Hook: agent_startup
 // ---------------------------------------------------------------------------
-export interface AgentStartupContext {
+export interface AgentStartupHookRequest extends HooksRequest {
   agent_init: {
     tools_registered: string[];
   };
 }
 
-export interface AgentStartupHookRequest
-  extends HooksRequest,
-    AgentStartupContext {}
+export interface AgentStartupHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type AgentStartupHookHandler = HooksHandler<
+  AgentStartupHookRequest,
+  UnresolvedHookTransform
+>;
 
 // ---------------------------------------------------------------------------
 // Hook: input
 // ---------------------------------------------------------------------------
-export interface InputContext {
+export interface InputHookRequest extends HooksRequest {
   input: {
     content: JsonValue;
     role: "user" | "system" | "external";
   };
 }
 
-export interface InputHookRequest extends HooksRequest, InputContext {}
+export interface InputHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type InputHookHandler = HooksHandler<
+  InputHookRequest,
+  UnresolvedHookTransform
+>;
 
 // ---------------------------------------------------------------------------
 // Hook: pre_model_call
 // ---------------------------------------------------------------------------
-export interface PreModelContext {
+export interface PreModelHookRequest extends HooksRequest {
   model: {
     id: string;
   };
@@ -135,14 +152,18 @@ export interface PreModelContext {
   }[];
 }
 
-export interface PreModelHookRequest
-  extends HooksRequest,
-    PreModelContext {}
+export interface PreModelHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type PreModelHookHandler = HooksHandler<
+  PreModelHookRequest,
+  UnresolvedHookTransform
+>;
 
 // ---------------------------------------------------------------------------
 // Hook: post_model_call
 // ---------------------------------------------------------------------------
-export interface PostModelContext {
+export interface PostModelHookRequest extends HooksRequest {
   model: {
     id: string;
   };
@@ -157,18 +178,17 @@ export interface PostModelContext {
   };
 }
 
-export interface PostModelHookRequest
-  extends HooksRequest,
-    PostModelContext {}
+export interface PostModelHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type PostModelHookHandler = HooksHandler<
+  PostModelHookRequest,
+  UnresolvedHookTransform
+>;
 
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
 // ---------------------------------------------------------------------------
-export type PreToolHookHandler = HooksHandler<
-  PreToolHookRequest,
-  PreToolHookTransform
->;
-
 export interface PreToolHookRequest extends HooksRequest {
   tool_call: {
     /** @minLength 1 */
@@ -179,21 +199,23 @@ export interface PreToolHookRequest extends HooksRequest {
   };
 }
 
-export interface PreToolHookResponse
-  extends HooksResponse<PreToolHookTransform> {}
-
-/*
-* Object returned when the Verdict is "transform". For the pre-tool hook, the transform 
-* replaces the complete tool args.
-*/
+/** Transform replaces the complete tool args for the pre-tool hook. */
 export interface PreToolHookTransform {
   args: JsonObject;
 }
 
+export interface PreToolHookResponse
+  extends HooksResponse<PreToolHookTransform> {}
+
+export type PreToolHookHandler = HooksHandler<
+  PreToolHookRequest,
+  PreToolHookTransform
+>;
+
 // ---------------------------------------------------------------------------
 // Hook: post_tool_call
 // ---------------------------------------------------------------------------
-export interface PostToolContext {
+export interface PostToolHookRequest extends HooksRequest {
   tool_call: {
     /** @minLength 1 */
     id: string;
@@ -207,30 +229,44 @@ export interface PostToolContext {
   };
 }
 
-export interface PostToolHookRequest
-  extends HooksRequest,
-    PostToolContext {}
+export interface PostToolHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type PostToolHookHandler = HooksHandler<
+  PostToolHookRequest,
+  UnresolvedHookTransform
+>;
 
 // ---------------------------------------------------------------------------
 // Hook: output
 // ---------------------------------------------------------------------------
-export interface OutputContext {
+export interface OutputHookRequest extends HooksRequest {
   output: {
     content: JsonValue;
   };
 }
 
-export interface OutputHookRequest extends HooksRequest, OutputContext {}
+export interface OutputHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type OutputHookHandler = HooksHandler<
+  OutputHookRequest,
+  UnresolvedHookTransform
+>;
 
 // ---------------------------------------------------------------------------
 // Hook: agent_shutdown
 // ---------------------------------------------------------------------------
-export interface AgentShutdownContext {
+export interface AgentShutdownHookRequest extends HooksRequest {
   summary: {
     reason: "completed" | "error" | "cancelled";
   };
 }
 
-export interface AgentShutdownHookRequest
-  extends HooksRequest,
-    AgentShutdownContext {}
+export interface AgentShutdownHookResponse
+  extends HooksResponse<UnresolvedHookTransform> {}
+
+export type AgentShutdownHookHandler = HooksHandler<
+  AgentShutdownHookRequest,
+  UnresolvedHookTransform
+>;

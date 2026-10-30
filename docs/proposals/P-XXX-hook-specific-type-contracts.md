@@ -124,26 +124,21 @@ optional property, including nested members. The shared
 `timestamp`, `sequence`, `agent`, and `session`, plus reusable JSON type
 aliases. `HooksRequest` contains `agentContext: AgentContext` and an
 `[extension: string]: unknown` index signature. Each hook-specific request
-extends `HooksRequest` and its matching hook-context interface, putting
-required hook payload properties directly beside `agentContext`.
-`PreToolHookRequest` inlines its required `tool_call` payload instead of
-introducing a separate context interface; the other hook requests use their
-matching context interfaces. The hook-specific interfaces use the renamed
-`PostToolContext`, `PreModelContext`, and `PostModelContext` names (without
-`Call`).
+extends `HooksRequest` and declares its required hook payload properties
+directly beside `agentContext`; there are no separate hook-context interfaces.
 The file is self-contained and can move without changing imports;
 constraint comments do not claim runtime validation.
 
-| Hook context | Request interface | Required hook payload fields |
+| Request interface | Required hook payload fields |
 | --- | --- | --- |
-| `AgentStartupContext` | `AgentStartupHookRequest` | `agent_init: { tools_registered: string[] }` |
-| `InputContext` | `InputHookRequest` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
-| `PreModelContext` | `PreModelHookRequest` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
-| `PostModelContext` | `PostModelHookRequest` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
-| inline in `PreToolHookRequest` | `PreToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }` |
-| `PostToolContext` | `PostToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
-| `OutputContext` | `OutputHookRequest` | `output: { content: JsonValue }` |
-| `AgentShutdownContext` | `AgentShutdownHookRequest` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
+| `AgentStartupHookRequest` | `agent_init: { tools_registered: string[] }` |
+| `InputHookRequest` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
+| `PreModelHookRequest` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
+| `PostModelHookRequest` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
+| `PreToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }` |
+| `PostToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
+| `OutputHookRequest` | `output: { content: JsonValue }` |
+| `AgentShutdownHookRequest` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
 
 `JsonValue` includes `null`: required content/value fields may be null,
 but may not be omitted. `response.tool_calls` remains required even when
@@ -166,16 +161,17 @@ payload and cannot add decisions. Existing optional verdict metadata
 (reason, message, warnings, approval on deny, evidence, and result labels)
 remains available.
 
-`PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
-arguments rather than exposing a path/value patch, and
-`PreToolHookResponse extends HooksResponse<PreToolHookTransform>`.
-`PreToolVerdict` aliases the centralized `Verdict` with that transform type;
-it does not duplicate the decision union. `HooksHandler<TRequest,
-TTransform>` returns `HooksResponse<TTransform>`, so
-`PreToolHookHandler` specializes the transform type without constraining its
-response to the default path/value transform shape. Mapping the whole-args
-replacement to the existing wire `$target` transform and preserving verdict
-validation are implementation questions, not wire or SDK changes proposed
+Each hook has a named response extending `HooksResponse` and a matching
+handler alias using the same request/response pattern. `PreToolHookTransform`
+is `{ args: JsonObject }`, replacing the complete arguments rather than
+exposing a path/value patch. The other hooks use
+`UnresolvedHookTransform = unknown` as an explicit placeholder until their
+transform payloads are designed; this does not assert that every hook permits
+transforms. In particular, the current spec forbids transforms for
+`agent_startup` and `agent_shutdown`, and those placeholders do not change
+that rule. Mapping the pre-tool whole-args replacement to the existing wire
+`$target` transform, defining other hooks' transform contracts, and preserving
+verdict validation are open design questions, not wire or SDK changes proposed
 here.
 
 The broader wire-oriented sketches below remain alternatives for
