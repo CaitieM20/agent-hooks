@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Created:** 2026-10-30
 - **Author(s):** Caitie McCaffrey `<caitiem20@github.com>` (@CaitieM20)
-- **PR:** Pending
+- **PR:** https://github.com/CaitieM20/agent-hooks/pull/3
 
 See the [proposal process](README.md) for scope, lifecycle, decision
 authority, and review window.
