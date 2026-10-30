@@ -17,14 +17,11 @@ export type JsonObject = { [key: string]: JsonValue };
 /**
  * Required properties only, recursively; optional schema members are omitted.
  * TypeScript does not enforce the scalar constraints documented below or JSON
- * serializability. Validate wire data before treating it as this contract.
- * Structural typing does not enforce exact object keys. The source schema
- * closes tool_call, but does not close the root, agent, session, or args.
+ * serializability. This reusable metadata type excludes hook-specific fields.
  */
-export interface PreToolCallContext {
+export interface AgentContext {
   /** @pattern ^agent-hooks/\d+\.\d+$ */
   spec: string;
-  interception_point: "pre_tool_call";
   /** @format date-time */
   timestamp: string;
   /**
@@ -42,6 +39,17 @@ export interface PreToolCallContext {
     /** @minLength 1 */
     id: string;
   };
+}
+
+/**
+ * Exploratory composed API shape, not the current flat wire representation.
+ * Moving the shared metadata under context requires an explicit wire adapter.
+ * Structural typing does not enforce exact object keys. The source schema
+ * closes tool_call, but does not close the root, agent, session, or args.
+ */
+export interface PreToolCallContext {
+  context: AgentContext;
+  interception_point: "pre_tool_call";
   // The schema permits any JSON here; it does not prove equality with args.
   // The spec's target/args relationship requires a separate semantic check.
   target: JsonValue;

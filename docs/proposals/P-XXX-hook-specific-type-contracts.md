@@ -118,10 +118,16 @@ signature as a new wire requirement.
 
 For a standalone, required-only starting point, see
 [`pre-tool-call.contract.ts`](pre-tool-call.contract.ts). This initial
-design sketch follows the generated `pre_tool_call` schema, omits every
-optional property (including nested properties), and documents scalar
-constraints without claiming runtime validation. Its `target` remains any
-JSON, as in the schema; the stronger target refinement below is a proposal.
+design sketch uses the generated `pre_tool_call` schema's required fields,
+omits every optional property (including nested properties), and documents
+scalar constraints without claiming runtime validation. Reusable
+`AgentContext` contains only `spec`, `timestamp`, `sequence`, `agent`, and
+`session`. `PreToolCallContext` references it through `context: AgentContext`
+and owns `interception_point`, `target`, and `tool_call`. This is a
+type/interface-only API composition experiment, not a runtime class or
+today's flat wire representation; serialization would need an explicit
+adapter to flatten `context`. Its hook-specific `target` remains any JSON,
+as in the schema; the stronger target refinement below is a proposal.
 
 The following blocks form one illustrative TypeScript module. They are
 design artifacts, not exported SDK types or replacement authoritative
@@ -321,6 +327,9 @@ behavior should be weakened by a typed facade.
 This draft changes **no schema files, wire members, inventories, or
 published schema URLs**. The common envelope and hook payloads remain
 flat on the wire; the type maps above do not introduce a `payload` wrapper.
+The standalone required-only artifact explores a nested `context` API
+view, not a wire change; that view would need explicit flattening at the
+existing wire boundary.
 
 A subsequent agreed design could derive SDK-facing hook variants from
 the existing TypeScript schema source and generator pipeline. It would
