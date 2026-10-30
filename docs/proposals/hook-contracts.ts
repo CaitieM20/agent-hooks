@@ -69,6 +69,25 @@ export interface VerdictFields {
   result_labels?: string[] | null;
 }
 
+/**
+ * A path/value replacement within a hook's semantic `$target`; it is not a
+ * path into the request envelope. `$target` (and the deprecated
+ * `$policy_target` alias) maps as follows:
+ *
+ * | Hook | `$target` maps to |
+ * | --- | --- |
+ * | `input` | `request.input` |
+ * | `pre_model_call` | `request.messages` |
+ * | `post_model_call` | `request.response` |
+ * | `pre_tool_call` | `request.tool_call.args` |
+ * | `post_tool_call` | `request.tool_result.value` |
+ * | `output` | `request.output` |
+ *
+ * The bare root replaces the mapped value; descendants use the existing
+ * dot-member, bracket-index, or bracket-member path grammar. The host writes
+ * the replacement back to that mapped payload only. An omitted `value` means
+ * `null`. Startup and shutdown have no mutable target and forbid transforms.
+ */
 export interface Transform {
   path: string;
   value?: JsonValue;
