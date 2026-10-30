@@ -87,6 +87,7 @@ export interface VerdictFields {
  * dot-member, bracket-index, or bracket-member path grammar. The host writes
  * the replacement back to that mapped payload only. An omitted `value` means
  * `null`. Startup and shutdown have no mutable target and forbid transforms.
+ * TODO: Define a distinct Transform type for each transformable hook.
  */
 export interface Transform {
   path: string;
