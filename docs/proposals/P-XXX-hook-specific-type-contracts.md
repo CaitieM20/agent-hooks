@@ -118,16 +118,20 @@ signature as a new wire requirement.
 
 For a standalone, required-only starting point, see
 [`pre-tool-call.contract.ts`](pre-tool-call.contract.ts). This initial
-design sketch uses the generated `pre_tool_call` schema's required fields,
+design sketch starts from the generated `pre_tool_call` schema's required fields,
 omits every optional property (including nested properties), and documents
 scalar constraints without claiming runtime validation. Reusable
 `AgentContext` contains only `spec`, `timestamp`, `sequence`, `agent`, and
 `session`. `PreToolCallContext` references it through `context: AgentContext`
-and owns `interception_point`, `target`, and `tool_call`. This is a
-type/interface-only API composition experiment, not a runtime class or
-today's flat wire representation; serialization would need an explicit
-adapter to flatten `context`. Its hook-specific `target` remains any JSON,
-as in the schema; the stronger target refinement below is a proposal.
+and owns only `tool_call`. The hook-specific interface identifies the hook,
+so it omits `interception_point`; `tool_call.args` represents the input,
+so it also omits the duplicate `target`. This is a type/interface-only API
+composition experiment, not a runtime class or today's flat wire
+representation. Interfaces are erased at runtime: a hook-bound entry
+point/adapter must retain that identity. A wire adapter would flatten
+`context`, supply `interception_point: "pre_tool_call"`, and derive `target`
+from `tool_call.args`. The broader wire-oriented sketches below remain
+alternatives for discussion, not the standalone artifact's API shape.
 
 The following blocks form one illustrative TypeScript module. They are
 design artifacts, not exported SDK types or replacement authoritative
@@ -328,8 +332,9 @@ This draft changes **no schema files, wire members, inventories, or
 published schema URLs**. The common envelope and hook payloads remain
 flat on the wire; the type maps above do not introduce a `payload` wrapper.
 The standalone required-only artifact explores a nested `context` API
-view, not a wire change; that view would need explicit flattening at the
-existing wire boundary.
+view without duplicate hook/target fields, not a wire change. At the
+existing wire boundary an explicit adapter would flatten `context`, supply
+the hook discriminator, and derive `target` from `tool_call.args`.
 
 A subsequent agreed design could derive SDK-facing hook variants from
 the existing TypeScript schema source and generator pipeline. It would

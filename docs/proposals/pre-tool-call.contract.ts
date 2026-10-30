@@ -43,16 +43,16 @@ export interface AgentContext {
 
 /**
  * Exploratory composed API shape, not the current flat wire representation.
- * Moving the shared metadata under context requires an explicit wire adapter.
+ * The hook-specific interface replaces an explicit interception_point field;
+ * tool_call.args is the input, without a duplicate target field. Interfaces
+ * are erased at runtime, so the entry point/adapter must retain hook identity.
+ * A wire adapter would flatten context, set interception_point to
+ * "pre_tool_call", and derive target from tool_call.args.
  * Structural typing does not enforce exact object keys. The source schema
  * closes tool_call, but does not close the root, agent, session, or args.
  */
 export interface PreToolCallContext {
   context: AgentContext;
-  interception_point: "pre_tool_call";
-  // The schema permits any JSON here; it does not prove equality with args.
-  // The spec's target/args relationship requires a separate semantic check.
-  target: JsonValue;
   tool_call: {
     /** @minLength 1 */
     id: string;
