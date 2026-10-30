@@ -116,25 +116,26 @@ signature as a new wire requirement.
 
 #### TypeScript schema/type sketch: envelope and payloads
 
-The required-only starting sketches now cover all eight hooks. Each uses
+The single [TypeScript contract sketch](hook-contracts.ts) covers all eight
+hooks. Each interface uses
 its generated per-hook schema's required payload fields and omits every
 optional property, including nested members. The shared
-[`AgentContext`](agent-context.contract.ts) interface contains only `spec`,
+`AgentContext` interface contains only `spec`,
 `timestamp`, `sequence`, `agent`, and `session`, plus reusable JSON type
 aliases. Each hook interface references it through `context: AgentContext`.
-These neighboring files can move together without SDK or schema-source
-imports; constraint comments do not claim runtime validation.
+The file is self-contained and can move without changing imports;
+constraint comments do not claim runtime validation.
 
 | Hook interface sketch | Required payload fields (besides `context`) |
 | --- | --- |
-| [AgentStartupContext](agent-startup.contract.ts) | `agent_init: { tools_registered: string[] }` |
-| [InputContext](input.contract.ts) | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
-| [PreModelCallContext](pre-model-call.contract.ts) | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
-| [PostModelCallContext](post-model-call.contract.ts) | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
-| [PreToolCallContext](pre-tool-call.contract.ts) | `tool_call: { id: string, name: string, args: JsonObject }` |
-| [PostToolCallContext](post-tool-call.contract.ts) | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
-| [OutputContext](output.contract.ts) | `output: { content: JsonValue }` |
-| [AgentShutdownContext](agent-shutdown.contract.ts) | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
+| `AgentStartupContext` | `agent_init: { tools_registered: string[] }` |
+| `InputContext` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
+| `PreModelCallContext` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
+| `PostModelCallContext` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
+| `PreToolCallContext` | `tool_call: { id: string, name: string, args: JsonObject }` |
+| `PostToolCallContext` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
+| `OutputContext` | `output: { content: JsonValue }` |
+| `AgentShutdownContext` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
 
 `JsonValue` includes `null`: required content/value fields may be null,
 but may not be omitted. `response.tool_calls` remains required even when
@@ -149,7 +150,7 @@ Interfaces are erased at runtime: dispatch/adapters must retain hook
 identity. A wire adapter would flatten `context`, supply the hook
 discriminator, and derive `target` using the existing inventory above.
 The broader wire-oriented sketches below remain alternatives for
-discussion, not these artifacts' API shape.
+discussion, not the standalone artifact's API shape.
 
 The following blocks form one illustrative TypeScript module. They are
 design artifacts, not exported SDK types or replacement authoritative
@@ -349,7 +350,7 @@ behavior should be weakened by a typed facade.
 This draft changes **no schema files, wire members, inventories, or
 published schema URLs**. The common envelope and hook payloads remain
 flat on the wire; the type maps above do not introduce a `payload` wrapper.
-The required-only artifacts explore a nested `context` API view without
+The required-only artifact explores a nested `context` API view without
 duplicate hook/target fields, not a wire change. At the existing wire
 boundary an explicit adapter would flatten `context`, supply the hook
 discriminator, and derive `target` from the hook's associated payload.
