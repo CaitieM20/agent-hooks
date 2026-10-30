@@ -126,9 +126,9 @@ aliases. `HooksRequest` contains `agentContext: AgentContext` and an
 `[extension: string]: unknown` index signature. Each hook-specific request
 extends `HooksRequest` and its matching hook-context interface, putting
 required hook payload properties directly beside `agentContext`.
-`PreToolContext` describes the required tool call with `JsonObject` args;
-`PreToolHookRequest` extends `HooksRequest` and `PreToolContext`.
-The hook-specific interfaces use the renamed `PreToolContext`,
+`PreToolHookRequest` inlines its required `tool_call` payload instead of
+introducing a separate context interface; the other hook requests use their
+matching context interfaces. The hook-specific interfaces use the renamed
 `PostToolContext`, `PreModelContext`, and `PostModelContext` names (without
 `Call`).
 The file is self-contained and can move without changing imports;
@@ -140,7 +140,7 @@ constraint comments do not claim runtime validation.
 | `InputContext` | `InputHookRequest` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
 | `PreModelContext` | `PreModelHookRequest` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
 | `PostModelContext` | `PostModelHookRequest` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
-| `PreToolContext` | `PreToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }` |
+| inline in `PreToolHookRequest` | `PreToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }` |
 | `PostToolContext` | `PostToolHookRequest` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
 | `OutputContext` | `OutputHookRequest` | `output: { content: JsonValue }` |
 | `AgentShutdownContext` | `AgentShutdownHookRequest` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |

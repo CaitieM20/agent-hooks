@@ -168,7 +168,7 @@ export interface PreToolHookTransform {
   args: JsonObject;
 }
 
-export interface PreToolContext {
+export interface PreToolHookRequest extends HooksRequest {
   tool_call: {
     /** @minLength 1 */
     id: string;
@@ -177,10 +177,6 @@ export interface PreToolContext {
     args: JsonObject;
   };
 }
-
-export interface PreToolHookRequest
-  extends HooksRequest,
-    PreToolContext {}
 
 export type PreToolVerdict = Verdict<PreToolHookTransform>;
 
