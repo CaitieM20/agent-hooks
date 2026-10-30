@@ -1,0 +1,120 @@
+{
+  "description": "Illustrative paired pre-tool request and response examples. The existing-side request and responses are checked against the current schemas; the proposal-side examples illustrate the TypeScript sketch only and have not been generated from or validated against a new JSON Schema.",
+  "scenario": {
+    "tool_call": {
+      "id": "call-42",
+      "name": "read_file",
+      "args": {
+        "path": "src/config.json",
+        "dry_run": true
+      }
+    },
+    "replacement_args": {
+      "path": "src/config.json",
+      "dry_run": false,
+      "format": "json"
+    }
+  },
+  "existing_schema": {
+    "request": {
+      "spec": "agent-hooks/0.1",
+      "interception_point": "pre_tool_call",
+      "timestamp": "2026-10-30T12:00:00Z",
+      "sequence": 7,
+      "agent": {
+        "id": "agent-42",
+        "framework": "copilot"
+      },
+      "session": {
+        "id": "session-17"
+      },
+      "tool_call": {
+        "id": "call-42",
+        "name": "read_file",
+        "args": {
+          "path": "src/config.json",
+          "dry_run": true
+        }
+      },
+      "target": {
+        "path": "src/config.json",
+        "dry_run": true
+      }
+    },
+    "responses": {
+      "allow": {
+        "verdict": {
+          "decision": "allow"
+        }
+      },
+      "deny": {
+        "verdict": {
+          "decision": "deny",
+          "reason": "blocked_by_policy"
+        }
+      },
+      "transform": {
+        "verdict": {
+          "decision": "transform",
+          "transform": {
+            "path": "$target",
+            "value": {
+              "path": "src/config.json",
+              "dry_run": false,
+              "format": "json"
+            }
+          }
+        }
+      }
+    }
+  },
+  "proposed_typescript_contract": {
+    "request": {
+      "agentContext": {
+        "spec": "agent-hooks/0.1",
+        "timestamp": "2026-10-30T12:00:00Z",
+        "sequence": 7,
+        "agent": {
+          "id": "agent-42",
+          "framework": "copilot"
+        },
+        "session": {
+          "id": "session-17"
+        }
+      },
+      "tool_call": {
+        "id": "call-42",
+        "name": "read_file",
+        "args": {
+          "path": "src/config.json",
+          "dry_run": true
+        }
+      }
+    },
+    "responses": {
+      "allow": {
+        "verdict": {
+          "decision": "allow"
+        }
+      },
+      "deny": {
+        "verdict": {
+          "decision": "deny",
+          "reason": "blocked_by_policy"
+        }
+      },
+      "transform": {
+        "verdict": {
+          "decision": "transform",
+          "transform": {
+            "args": {
+              "path": "src/config.json",
+              "dry_run": false,
+              "format": "json"
+            }
+          }
+        }
+      }
+    }
+  }
+}

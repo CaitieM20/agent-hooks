@@ -199,6 +199,21 @@ alternatives. These TypeScript sketches describe intended shapes only and do
 not add runtime JSON validation or change the current wire contract, SDK, or
 verdict validation rules.
 
+#### Paired pre-tool examples
+
+[`pre-tool-contract-examples.json`](pre-tool-contract-examples.json) compares
+the current generated-schema request and response envelope with the proposed
+TypeScript data shapes for the same tool call. Both sides include allow, deny,
+and whole-args replacement examples. The current-side request and responses
+are validated against the checked-in schemas; the proposal side is illustrative
+JSON matching the TypeScript sketch, not output from or validation against a
+new JSON Schema. The current flat request includes
+`interception_point: "pre_tool_call"` and `target` matching `tool_call.args`;
+the proposal uses `agentContext` plus top-level `tool_call` and omits those
+wire fields. For transform, the current `{ path: "$target", value: ... }`
+whole-target replacement corresponds in intent to the proposed
+`{ args: ... }` replacement.
+
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
 
