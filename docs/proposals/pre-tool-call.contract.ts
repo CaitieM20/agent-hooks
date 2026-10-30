@@ -2,44 +2,8 @@
 
 // Initial design sketch, not a normative schema or production SDK API.
 // Source: spec/schema/generated/strict-contexts/pre_tool_call.schema.json.
-// Self-contained so this file can move without changing imports.
 
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | JsonObject;
-
-export type JsonObject = { [key: string]: JsonValue };
-
-/**
- * Required properties only, recursively; optional schema members are omitted.
- * TypeScript does not enforce the scalar constraints documented below or JSON
- * serializability. This reusable metadata type excludes hook-specific fields.
- */
-export interface AgentContext {
-  /** @pattern ^agent-hooks/\d+\.\d+$ */
-  spec: string;
-  /** @format date-time */
-  timestamp: string;
-  /**
-   * Integer, not a fractional number.
-   * @minimum 0
-   */
-  sequence: number;
-  agent: {
-    /** @minLength 1 */
-    id: string;
-    /** @pattern ^[a-z0-9_-]+$ */
-    framework: string;
-  };
-  session: {
-    /** @minLength 1 */
-    id: string;
-  };
-}
+import type { AgentContext, JsonObject } from "./agent-context.contract";
 
 /**
  * Exploratory composed API shape, not the current flat wire representation.
