@@ -236,3 +236,56 @@ export interface AgentShutdownHookRequest extends HooksRequest {
 
 export interface AgentShutdownHookResponse
   extends HooksResponse<never> {}
+
+// ===========================================================================
+// SDK-facing handler pairing (separate from serialized data contracts)
+// ===========================================================================
+
+/**
+ * Synchronous illustrative pairing between a hook request and its response.
+ * Execution and asynchronous scheduling are SDK decisions outside this
+ * data-contract sketch.
+ */
+export type HookHandler<TRequest, TResponse> = (
+  request: TRequest,
+) => TResponse;
+
+export type AgentStartupHookHandler = HookHandler<
+  AgentStartupHookRequest,
+  AgentStartupHookResponse
+>;
+
+export type InputHookHandler = HookHandler<
+  InputHookRequest,
+  InputHookResponse
+>;
+
+export type PreModelHookHandler = HookHandler<
+  PreModelHookRequest,
+  PreModelHookResponse
+>;
+
+export type PostModelHookHandler = HookHandler<
+  PostModelHookRequest,
+  PostModelHookResponse
+>;
+
+export type PreToolHookHandler = HookHandler<
+  PreToolHookRequest,
+  PreToolHookResponse
+>;
+
+export type PostToolHookHandler = HookHandler<
+  PostToolHookRequest,
+  PostToolHookResponse
+>;
+
+export type OutputHookHandler = HookHandler<
+  OutputHookRequest,
+  OutputHookResponse
+>;
+
+export type AgentShutdownHookHandler = HookHandler<
+  AgentShutdownHookRequest,
+  AgentShutdownHookResponse
+>;

@@ -162,7 +162,10 @@ payload and cannot add decisions. Existing optional verdict metadata
 remains available.
 
 Each hook has a named response extending `HooksResponse`; these definitions
-describe data only, not callback signatures or dispatch behavior.
+describe the data contract. A separate SDK-facing section pairs each request
+with its matching response using a synchronous `HookHandler<TRequest,
+TResponse>` signature. This illustrates the type pairing only; execution and
+asynchronous scheduling remain SDK decisions outside this contract sketch.
 `PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
 arguments rather than exposing a path/value patch. This intentionally differs
 from current `pre_tool_call` wire behavior, where a `$target`-rooted path may
