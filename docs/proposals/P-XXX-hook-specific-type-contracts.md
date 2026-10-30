@@ -122,13 +122,14 @@ its generated per-hook schema's required payload fields and omits every
 optional property, including nested members. The shared
 `AgentContext` interface contains only `spec`,
 `timestamp`, `sequence`, `agent`, and `session`, plus reusable JSON type
-aliases. The hook-specific interfaces use the renamed `PreToolContext`,
+aliases. `HooksRequest<TContext = object>` composes it as
+`agentContext: AgentContext` with generic `hookContext: TContext`.
+`PreToolContext<TArgs>` describes the required tool call with typed args;
+`PreToolHookRequest<TArgs>` specializes the generic request with that context.
+The hook-specific interfaces use the renamed `PreToolContext`,
 `PostToolContext`, `PreModelContext`, and `PostModelContext` names (without
-`Call`). `PreToolContext` is the hook payload; the additional
-`PreToolHookRequest` composes it with shared metadata through distinct
-`agentContext: AgentContext` and `preToolContext: PreToolContext` properties.
-The other hook context interfaces retain their `context: AgentContext`
-composition in this draft.
+`Call`). The other hook request examples retain their earlier
+`context: AgentContext` composition as a parallel sketch.
 The file is self-contained and can move without changing imports;
 constraint comments do not claim runtime validation.
 
@@ -138,7 +139,7 @@ constraint comments do not claim runtime validation.
 | `InputContext` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
 | `PreModelContext` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
 | `PostModelContext` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
-| `PreToolContext` | `tool_call: { id: string, name: string, args: JsonObject }`; in `PreToolHookRequest`, composed with `AgentContext` as separate `agentContext` and `preToolContext` properties |
+| `PreToolContext<TArgs>` | `tool_call: { id: string, name: string, args: TArgs }`; `PreToolHookRequest<TArgs>` has separate `agentContext: AgentContext` and `hookContext: PreToolContext<TArgs>` properties |
 | `PostToolContext` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
 | `OutputContext` | `output: { content: JsonValue }` |
 | `AgentShutdownContext` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
@@ -154,8 +155,20 @@ hook-bound entry point identify the hook, so all omit `interception_point`.
 Each payload already carries the relevant data, so all omit duplicate
 `target`. Interfaces are erased at runtime: dispatch/adapters must retain
 hook identity. A wire adapter would flatten `context` (or `agentContext`
-and `preToolContext` for `PreToolHookRequest`), supply the hook discriminator,
+and `hookContext` for `PreToolHookRequest`), supply the hook discriminator,
 and derive `target` using the existing inventory above.
+`HooksResponse<TVerdict = Verdict>` wraps the return value as `verdict`.
+`PreToolHookResponse<TArgs>` specializes it with allow, deny, and transform
+verdicts. Existing optional verdict metadata (reason, message, warnings,
+approval on deny, evidence, and result labels) remains available. For this
+high-level API sketch only, the transform body is `{ args: TArgs }`, replacing
+the complete typed arguments rather than exposing a path/value patch.
+`HooksHandler` makes the request-to-response return contract explicit, and
+`PreToolHookHandler<TArgs>` binds the specialized request and response.
+Mapping that whole-args replacement to the existing wire `$target` transform
+and preserving verdict validation are implementation questions, not wire or
+SDK changes proposed here.
+
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
 
