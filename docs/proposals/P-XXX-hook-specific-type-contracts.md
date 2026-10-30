@@ -122,7 +122,13 @@ its generated per-hook schema's required payload fields and omits every
 optional property, including nested members. The shared
 `AgentContext` interface contains only `spec`,
 `timestamp`, `sequence`, `agent`, and `session`, plus reusable JSON type
-aliases. Each hook interface references it through `context: AgentContext`.
+aliases. The hook-specific interfaces use the renamed `PreToolContext`,
+`PostToolContext`, `PreModelContext`, and `PostModelContext` names (without
+`Call`). `PreToolContext` is the hook payload; the additional
+`PreToolHookRequest` composes it with shared metadata through distinct
+`agentContext: AgentContext` and `preToolContext: PreToolContext` properties.
+The other hook context interfaces retain their `context: AgentContext`
+composition in this draft.
 The file is self-contained and can move without changing imports;
 constraint comments do not claim runtime validation.
 
@@ -130,10 +136,10 @@ constraint comments do not claim runtime validation.
 | --- | --- |
 | `AgentStartupContext` | `agent_init: { tools_registered: string[] }` |
 | `InputContext` | `input: { content: JsonValue, role: "user" \| "system" \| "external" }` |
-| `PreModelCallContext` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
-| `PostModelCallContext` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
-| `PreToolCallContext` | `tool_call: { id: string, name: string, args: JsonObject }` |
-| `PostToolCallContext` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
+| `PreModelContext` | `model: { id: string }`, `messages: { role: string, content: JsonValue }[]` |
+| `PostModelContext` | `model: { id: string }`, `response: { content: JsonValue, tool_calls: { name: string, args: JsonObject }[], finish_reason: string }` |
+| `PreToolContext` | `tool_call: { id: string, name: string, args: JsonObject }`; in `PreToolHookRequest`, composed with `AgentContext` as separate `agentContext` and `preToolContext` properties |
+| `PostToolContext` | `tool_call: { id: string, name: string, args: JsonObject }`, `tool_result: { value: JsonValue, is_error: boolean }` |
 | `OutputContext` | `output: { content: JsonValue }` |
 | `AgentShutdownContext` | `summary: { reason: "completed" \| "error" \| "cancelled" }` |
 
@@ -143,12 +149,13 @@ empty; its nested optional `id` is omitted, unlike the required nonempty
 `tool_call.id` at the two tool hooks. No new defaults are introduced.
 
 These are type/interface-only API composition experiments, not runtime
-classes or today's flat wire representation. The interface and hook-bound
-entry point identify the hook, so all omit `interception_point`. Each
-payload already carries the relevant data, so all omit duplicate `target`.
-Interfaces are erased at runtime: dispatch/adapters must retain hook
-identity. A wire adapter would flatten `context`, supply the hook
-discriminator, and derive `target` using the existing inventory above.
+classes or today's flat wire representation. The hook-specific type and
+hook-bound entry point identify the hook, so all omit `interception_point`.
+Each payload already carries the relevant data, so all omit duplicate
+`target`. Interfaces are erased at runtime: dispatch/adapters must retain
+hook identity. A wire adapter would flatten `context` (or `agentContext`
+and `preToolContext` for `PreToolHookRequest`), supply the hook discriminator,
+and derive `target` using the existing inventory above.
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.
 
@@ -260,10 +267,10 @@ type HookContext = ContextByHook[Hook];
 
 type AgentStartupContext = ContextByHook["agent_startup"];
 type InputContext = ContextByHook["input"];
-type PreModelCallContext = ContextByHook["pre_model_call"];
-type PostModelCallContext = ContextByHook["post_model_call"];
-type PreToolCallContext = ContextByHook["pre_tool_call"];
-type PostToolCallContext = ContextByHook["post_tool_call"];
+type PreModelContext = ContextByHook["pre_model_call"];
+type PostModelContext = ContextByHook["post_model_call"];
+type PreToolContext = ContextByHook["pre_tool_call"];
+type PostToolContext = ContextByHook["post_tool_call"];
 type OutputContext = ContextByHook["output"];
 type AgentShutdownContext = ContextByHook["agent_shutdown"];
 

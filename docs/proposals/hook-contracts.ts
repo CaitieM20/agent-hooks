@@ -20,7 +20,8 @@ export type JsonObject = { [key: string]: JsonValue };
  * TypeScript does not enforce the scalar constraints below, exact object keys,
  * or JSON serializability. Validate data at the wire boundary.
  * Hook interfaces are erased at runtime: hook-bound dispatch retains identity.
- * A wire adapter flattens context and supplies interception_point and target.
+ * A wire adapter flattens agentContext and preToolContext and supplies
+ * interception_point and target.
  */
 export interface AgentContext {
   /** @pattern ^agent-hooks/\d+\.\d+$ */
@@ -62,7 +63,7 @@ export interface InputContext {
 }
 
 // pre_model_call: a wire adapter derives target from messages, not model.
-export interface PreModelCallContext {
+export interface PreModelContext {
   context: AgentContext;
   model: {
     id: string;
@@ -74,7 +75,7 @@ export interface PreModelCallContext {
 }
 
 // post_model_call: a wire adapter derives target from the entire response.
-export interface PostModelCallContext {
+export interface PostModelContext {
   context: AgentContext;
   model: {
     id: string;
@@ -90,9 +91,8 @@ export interface PostModelCallContext {
   };
 }
 
-// pre_tool_call: a wire adapter derives target from tool_call.args.
-export interface PreToolCallContext {
-  context: AgentContext;
+// pre_tool_call payload: a wire adapter derives target from tool_call.args.
+export interface PreToolContext {
   tool_call: {
     /** @minLength 1 */
     id: string;
@@ -102,8 +102,15 @@ export interface PreToolCallContext {
   };
 }
 
+// Request composition keeps shared envelope context separate from the hook
+// payload. The hook-bound method determines which PreToolContext is required.
+export interface PreToolHookRequest {
+  agentContext: AgentContext;
+  preToolContext: PreToolContext;
+}
+
 // post_tool_call: a wire adapter derives target from tool_result.value.
-export interface PostToolCallContext {
+export interface PostToolContext {
   context: AgentContext;
   tool_call: {
     /** @minLength 1 */
