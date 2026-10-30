@@ -201,13 +201,14 @@ verdict validation rules.
 
 #### Paired pre-tool examples
 
-[`pre-tool-contract-examples.json`](pre-tool-contract-examples.json) compares
-the current generated-schema request and response envelope with the proposed
-TypeScript data shapes for the same tool call. Both sides include allow, deny,
-and whole-args replacement examples. The current-side request and responses
-are validated against the checked-in schemas; the proposal side is illustrative
-JSON matching the TypeScript sketch, not output from or validation against a
-new JSON Schema. The current flat request includes
+[`pre-tool-existing-contract-example.json`](pre-tool-existing-contract-example.json)
+and
+[`pre-tool-proposed-contract-example.json`](pre-tool-proposed-contract-example.json)
+are separate example-instance files for side-by-side comparison. They use the
+same tool call and include allow, deny, and whole-args replacement examples.
+The existing-side request and responses are validated against the checked-in
+schemas; the proposed-side JSON illustrates the TypeScript sketch only, not
+output from or validation against a new JSON Schema. The current flat request includes
 `interception_point: "pre_tool_call"` and `target` matching `tool_call.args`;
 the proposal uses `agentContext` plus top-level `tool_call` and omits those
 wire fields. For transform, the current `{ path: "$target", value: ... }`
