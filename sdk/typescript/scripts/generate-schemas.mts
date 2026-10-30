@@ -235,11 +235,16 @@ function firstDifference(actual: string, expected: string): string {
   return "";
 }
 
+export function escapeWorkflowCommandData(value: string): string {
+  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
 function main(): number {
   const check = process.argv.includes("--check");
   const files = render();
   let failing = 0;
   for (const [file, text] of files) {
+    const annotationFile = escapeWorkflowCommandData(file);
     const path = join(OUT, file);
     if (!check) {
       mkdirSync(dirname(path), { recursive: true });
@@ -249,24 +254,27 @@ function main(): number {
     }
     if (!existsSync(path)) {
       failing++;
-      console.log(`::error::${SCHEMA_DIR}/generated/${file} is missing; run npm run generate:schema in sdk/typescript`);
+      console.log(`::error::${escapeWorkflowCommandData(SCHEMA_DIR)}/generated/${annotationFile} is missing; run npm run generate:schema in sdk/typescript`);
       continue;
     }
-    const actual = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+    const actual = readFileSync(path, "utf8");
     if (actual !== text) {
       failing++;
-      console.log(`::error::${SCHEMA_DIR}/generated/${file} differs from the TypeScript source; run npm run generate:schema in sdk/typescript`);
+      console.log(`::error::${escapeWorkflowCommandData(SCHEMA_DIR)}/generated/${annotationFile} differs from the TypeScript source; run npm run generate:schema in sdk/typescript`);
       console.log(`  ${firstDifference(actual, text)}`);
     }
   }
   if (check) {
     for (const file of committed().filter((f) => !files.has(f))) {
       failing++;
-      console.log(`::error::${SCHEMA_DIR}/generated/${file} has no source under ${SCHEMA_DIR}/src/`);
+      const annotationFile = escapeWorkflowCommandData(file);
+      console.log(`::error::${escapeWorkflowCommandData(SCHEMA_DIR)}/generated/${annotationFile} has no source under ${escapeWorkflowCommandData(SCHEMA_DIR)}/src/`);
     }
     console.log(`generate-schemas --check: ${files.size} files generated, ${failing} failing`);
   }
   return failing ? 1 : 0;
 }
 
-process.exit(main());
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exit(main());
+}
