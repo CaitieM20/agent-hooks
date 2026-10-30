@@ -158,17 +158,25 @@ Each payload already carries the relevant data, so all omit duplicate
 hook identity. A wire adapter would flatten each request's `agentContext`
 and hook payload, supply the hook discriminator, and derive `target` using
 the existing inventory above.
-`HooksResponse<TVerdict = Verdict>` wraps the return value as `verdict`.
-`PreToolHookResponse` specializes it with allow, deny, and transform
-verdicts. Existing optional verdict metadata (reason, message, warnings,
-approval on deny, evidence, and result labels) remains available. For this
-high-level API sketch only, the transform body is `{ args: JsonObject }`,
-replacing the complete arguments rather than exposing a path/value patch.
-`HooksHandler` makes the request-to-response return contract explicit, and
-`PreToolHookHandler` binds the specialized request and response.
-Mapping that whole-args replacement to the existing wire `$target` transform
-and preserving verdict validation are implementation questions, not wire or
-SDK changes proposed here.
+`Verdict<TTransform = Transform>` centralizes the only three decisions
+(`allow`, `deny`, `transform`) together with shared `VerdictFields`.
+`HooksResponse<TTransform = Transform>` wraps
+`verdict: Verdict<TTransform>`; its generic specializes only the transform
+payload and cannot add decisions. Existing optional verdict metadata
+(reason, message, warnings, approval on deny, evidence, and result labels)
+remains available.
+
+`PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
+arguments rather than exposing a path/value patch, and
+`PreToolHookResponse extends HooksResponse<PreToolHookTransform>`.
+`PreToolVerdict` aliases the centralized `Verdict` with that transform type;
+it does not duplicate the decision union. `HooksHandler<TRequest,
+TTransform>` returns `HooksResponse<TTransform>`, so
+`PreToolHookHandler` specializes the transform type without constraining its
+response to the default path/value transform shape. Mapping the whole-args
+replacement to the existing wire `$target` transform and preserving verdict
+validation are implementation questions, not wire or SDK changes proposed
+here.
 
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.

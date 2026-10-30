@@ -75,24 +75,27 @@ export interface Transform {
 }
 
 /**
- * Current wire-shaped verdict union, included as the generic response default.
+ * The decision set is centralized; hooks may specialize only the transform
+ * payload, not add or remove decisions.
  */
-export type Verdict = VerdictFields &
+export type Verdict<TTransform = Transform> = VerdictFields &
   (
     | { decision: "allow" }
     | { decision: "deny"; approval?: JsonObject }
-    | { decision: "transform"; transform: Transform }
+    | { decision: "transform"; transform: TTransform }
   );
 
 /** Generic response envelope; specialized responses narrow `verdict`. */
-export interface HooksResponse<TVerdict = Verdict> {
-  verdict: TVerdict;
+export interface HooksResponse<TTransform = Transform> {
+  verdict: Verdict<TTransform>;
 }
 
 export type HooksHandler<
   TRequest extends HooksRequest = HooksRequest,
-  TResponse extends HooksResponse = HooksResponse,
-> = (request: TRequest) => TResponse | Promise<TResponse>;
+  TTransform = Transform,
+> = (
+  request: TRequest,
+) => HooksResponse<TTransform> | Promise<HooksResponse<TTransform>>;
 
 // ---------------------------------------------------------------------------
 // Hook: agent_startup
@@ -161,6 +164,10 @@ export interface PostModelHookRequest
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
 // ---------------------------------------------------------------------------
+export interface PreToolHookTransform {
+  args: JsonObject;
+}
+
 export interface PreToolContext {
   tool_call: {
     /** @minLength 1 */
@@ -175,24 +182,15 @@ export interface PreToolHookRequest
   extends HooksRequest,
     PreToolContext {}
 
-/**
- * Allow/deny retain the shared verdict fields. At this API level, transform
- * replaces the complete tool args rather than carrying a wire path/value patch.
- */
-export type PreToolVerdict = VerdictFields &
-  (
-    | { decision: "allow" }
-    | { decision: "deny"; approval?: JsonObject }
-    | { decision: "transform"; transform: { args: JsonObject } }
-  );
+export type PreToolVerdict = Verdict<PreToolHookTransform>;
 
 /** Response specialization whose transform replaces the complete tool args. */
 export interface PreToolHookResponse
-  extends HooksResponse<PreToolVerdict> {}
+  extends HooksResponse<PreToolHookTransform> {}
 
 export type PreToolHookHandler = HooksHandler<
   PreToolHookRequest,
-  PreToolHookResponse
+  PreToolHookTransform
 >;
 
 // ---------------------------------------------------------------------------
