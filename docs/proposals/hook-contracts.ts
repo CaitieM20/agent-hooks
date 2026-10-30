@@ -68,31 +68,6 @@ export interface VerdictFields {
   result_labels?: string[] | null;
 }
 
-/**
- * A path/value replacement within a hook's semantic `$target`; it is not a
- * path into the request envelope. `$target` (and the deprecated
- * `$policy_target` alias) maps as follows:
- *
- * | Hook | `$target` maps to |
- * | --- | --- |
- * | `input` | `request.input` |
- * | `pre_model_call` | `request.messages` |
- * | `post_model_call` | `request.response` |
- * | `pre_tool_call` | `request.tool_call.args` |
- * | `post_tool_call` | `request.tool_result.value` |
- * | `output` | `request.output` |
- *
- * The bare root replaces the mapped value; descendants use the existing
- * dot-member, bracket-index, or bracket-member path grammar. The host writes
- * the replacement back to that mapped payload only. An omitted `value` means
- * `null`. Startup and shutdown have no mutable target and forbid transforms.
- * TODO: Define a distinct Transform type for each transformable hook.
- */
-export interface Transform {
-  path: string;
-  value?: JsonValue;
-}
-
 export type AllowVerdict = VerdictFields & { decision: "allow" };
 
 export type DenyVerdict = VerdictFields & {
@@ -108,12 +83,12 @@ export type TransformVerdict<TTransform> = VerdictFields & {
 export type NonTransformVerdict = AllowVerdict | DenyVerdict;
 
 /** Hooks may specialize transform payloads, but cannot add decision variants. */
-export type Verdict<TTransform = Transform> =
+export type Verdict<TTransform> =
   | NonTransformVerdict
   | TransformVerdict<TTransform>;
 
 /** Generic data response envelope; specialized responses narrow `verdict`. */
-export interface HooksResponse<TTransform = Transform> {
+export interface HooksResponse<TTransform> {
   verdict: Verdict<TTransform>;
 }
 
@@ -140,8 +115,13 @@ export interface InputHookRequest extends HooksRequest {
   };
 }
 
+/** Replaces the complete input payload. */
+export interface InputHookTransform {
+  input: InputHookRequest["input"];
+}
+
 export interface InputHookResponse
-  extends HooksResponse<Transform> {}
+  extends HooksResponse<InputHookTransform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: pre_model_call
@@ -156,8 +136,13 @@ export interface PreModelHookRequest extends HooksRequest {
   }[];
 }
 
+/** Replaces the complete model-message array. */
+export interface PreModelHookTransform {
+  messages: PreModelHookRequest["messages"];
+}
+
 export interface PreModelHookResponse
-  extends HooksResponse<Transform> {}
+  extends HooksResponse<PreModelHookTransform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: post_model_call
@@ -177,8 +162,13 @@ export interface PostModelHookRequest extends HooksRequest {
   };
 }
 
+/** Replaces the complete model response payload. */
+export interface PostModelHookTransform {
+  response: PostModelHookRequest["response"];
+}
+
 export interface PostModelHookResponse
-  extends HooksResponse<Transform> {}
+  extends HooksResponse<PostModelHookTransform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
@@ -193,7 +183,7 @@ export interface PreToolHookRequest extends HooksRequest {
   };
 }
 
-/** Transform replaces the complete tool args for the pre-tool hook. */
+/** Replaces the complete tool args for the pre-tool hook. */
 export interface PreToolHookTransform {
   args: JsonObject;
 }
@@ -218,8 +208,13 @@ export interface PostToolHookRequest extends HooksRequest {
   };
 }
 
+/** Replaces only the value of the tool result. */
+export interface PostToolHookTransform {
+  value: PostToolHookRequest["tool_result"]["value"];
+}
+
 export interface PostToolHookResponse
-  extends HooksResponse<Transform> {}
+  extends HooksResponse<PostToolHookTransform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: output
@@ -230,8 +225,13 @@ export interface OutputHookRequest extends HooksRequest {
   };
 }
 
+/** Replaces the complete output payload. */
+export interface OutputHookTransform {
+  output: OutputHookRequest["output"];
+}
+
 export interface OutputHookResponse
-  extends HooksResponse<Transform> {}
+  extends HooksResponse<OutputHookTransform> {}
 
 // ---------------------------------------------------------------------------
 // Hook: agent_shutdown

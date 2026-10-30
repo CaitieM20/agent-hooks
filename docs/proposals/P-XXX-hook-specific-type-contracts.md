@@ -154,9 +154,9 @@ omit `interception_point`. Each payload already carries the relevant data, so
 all omit duplicate `target`. Interfaces are erased at runtime:
 dispatch/adapters must retain hook identity. A wire adapter would supply the
 hook discriminator and derive `target` using the existing inventory above.
-`Verdict<TTransform = Transform>` centralizes the only three decisions
+`Verdict<TTransform>` centralizes the only three decisions
 (`allow`, `deny`, `transform`) together with shared `VerdictFields`.
-`HooksResponse<TTransform = Transform>` wraps
+`HooksResponse<TTransform>` wraps
 `verdict: Verdict<TTransform>`; its generic specializes only the transform
 payload and cannot add decisions. Existing optional verdict metadata
 (reason, message, warnings, approval on deny, evidence, and result labels)
@@ -171,27 +171,31 @@ separate SDK-facing section pairs each request with its matching response
 using a synchronous `HookHandler<TRequest, TResponse>` signature. This
 illustrates the type pairing only; execution and asynchronous scheduling
 remain SDK decisions outside this contract sketch.
-`PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
-arguments rather than exposing a path/value patch. This intentionally differs
-from current `pre_tool_call` wire behavior, where a `$target`-rooted path may
-replace the entire args value or a nested location within it.
+Each of the six transformable hooks has a named whole-value replacement
+type. The transform object contains the writable request slice, not a
+`$target` path or a copy of the complete request. The input, message, response,
+tool-result-value, and output types reuse their request property definitions
+via indexed access, so required fields stay aligned:
 
-`input`, `pre_model_call`, `post_model_call`, `post_tool_call`, and `output`
-responses use the existing `Transform` data shape (`path`, optional `value`).
-`$target` is a semantic alias for the request's mapped payload, not a field in
-the request or transform object: respectively `request.input`,
-`request.messages`, `request.response`, `request.tool_result.value`, and
-`request.output`. A path equal to `$target` replaces that entire mapped value;
-descendant paths use the existing dot-member, bracket-index, or bracket-member
-grammar. The currently accepted deprecated `$policy_target` root aliases
-`$target`. These transforms may not modify other request or context fields.
-The host must write the updated target back to its mapped request payload
-(the same semantic relationships as today's wire adapter). An omitted
-`Transform.value` means `null`, as in the existing contract. Unresolvable
-paths or incompatible path segments retain `host_error:transform_invalid`;
-roots outside `$target`/`$policy_target` retain
-`host_error:transform_target_forbidden`. In `evaluate_only` mode the path is
-validated against the target but not applied.
+| Hook | Transform type | Replaced request slice |
+| --- | --- | --- |
+| `input` | `InputHookTransform { input }` | Complete `request.input` |
+| `pre_model_call` | `PreModelHookTransform { messages }` | Complete `request.messages` array |
+| `post_model_call` | `PostModelHookTransform { response }` | Complete `request.response` |
+| `pre_tool_call` | `PreToolHookTransform { args }` | Complete `request.tool_call.args` |
+| `post_tool_call` | `PostToolHookTransform { value }` | Only `request.tool_result.value` |
+| `output` | `OutputHookTransform { output }` | Complete `request.output` |
+
+These are whole-value replacements: they do not let an interceptor mutate
+other request or context fields. They correspond in intent to the existing
+wire transform rooted at `$target` (or its deprecated `$policy_target`
+alias), where replacing the root replaces that same complete slice. Unlike
+the current wire contract, the proposed transform objects do not express
+nested path edits. Callers that currently change a nested member must instead
+construct and return the updated complete slice. A future adapter could
+encode each result as a root-target replacement; it must write the replacement
+back only to the mapped request slice. This is a material SDK/API migration
+consideration, even though no wire or SDK change is made in this draft.
 
 The current spec forbids transforms for `agent_startup` and `agent_shutdown`;
 their response types explicitly use `NonTransformVerdict`. The corresponding
