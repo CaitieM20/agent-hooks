@@ -85,17 +85,10 @@ export type Verdict<TTransform = Transform> = VerdictFields &
     | { decision: "transform"; transform: TTransform }
   );
 
-/** Generic response envelope; specialized responses narrow `verdict`. */
+/** Generic data response envelope; specialized responses narrow `verdict`. */
 export interface HooksResponse<TTransform = Transform> {
   verdict: Verdict<TTransform>;
 }
-
-export type HooksHandler<
-  TRequest extends HooksRequest = HooksRequest,
-  TTransform = Transform,
-> = (
-  request: TRequest,
-) => HooksResponse<TTransform> | Promise<HooksResponse<TTransform>>;
 
 /**
  * Placeholder only: hook-specific transform payloads still need design.
@@ -116,11 +109,6 @@ export interface AgentStartupHookRequest extends HooksRequest {
 export interface AgentStartupHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
 
-export type AgentStartupHookHandler = HooksHandler<
-  AgentStartupHookRequest,
-  UnresolvedHookTransform
->;
-
 // ---------------------------------------------------------------------------
 // Hook: input
 // ---------------------------------------------------------------------------
@@ -133,11 +121,6 @@ export interface InputHookRequest extends HooksRequest {
 
 export interface InputHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
-
-export type InputHookHandler = HooksHandler<
-  InputHookRequest,
-  UnresolvedHookTransform
->;
 
 // ---------------------------------------------------------------------------
 // Hook: pre_model_call
@@ -154,11 +137,6 @@ export interface PreModelHookRequest extends HooksRequest {
 
 export interface PreModelHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
-
-export type PreModelHookHandler = HooksHandler<
-  PreModelHookRequest,
-  UnresolvedHookTransform
->;
 
 // ---------------------------------------------------------------------------
 // Hook: post_model_call
@@ -181,11 +159,6 @@ export interface PostModelHookRequest extends HooksRequest {
 export interface PostModelHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
 
-export type PostModelHookHandler = HooksHandler<
-  PostModelHookRequest,
-  UnresolvedHookTransform
->;
-
 // ---------------------------------------------------------------------------
 // Hook: pre_tool_call
 // ---------------------------------------------------------------------------
@@ -207,11 +180,6 @@ export interface PreToolHookTransform {
 export interface PreToolHookResponse
   extends HooksResponse<PreToolHookTransform> {}
 
-export type PreToolHookHandler = HooksHandler<
-  PreToolHookRequest,
-  PreToolHookTransform
->;
-
 // ---------------------------------------------------------------------------
 // Hook: post_tool_call
 // ---------------------------------------------------------------------------
@@ -232,11 +200,6 @@ export interface PostToolHookRequest extends HooksRequest {
 export interface PostToolHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
 
-export type PostToolHookHandler = HooksHandler<
-  PostToolHookRequest,
-  UnresolvedHookTransform
->;
-
 // ---------------------------------------------------------------------------
 // Hook: output
 // ---------------------------------------------------------------------------
@@ -249,11 +212,6 @@ export interface OutputHookRequest extends HooksRequest {
 export interface OutputHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
 
-export type OutputHookHandler = HooksHandler<
-  OutputHookRequest,
-  UnresolvedHookTransform
->;
-
 // ---------------------------------------------------------------------------
 // Hook: agent_shutdown
 // ---------------------------------------------------------------------------
@@ -265,8 +223,3 @@ export interface AgentShutdownHookRequest extends HooksRequest {
 
 export interface AgentShutdownHookResponse
   extends HooksResponse<UnresolvedHookTransform> {}
-
-export type AgentShutdownHookHandler = HooksHandler<
-  AgentShutdownHookRequest,
-  UnresolvedHookTransform
->;

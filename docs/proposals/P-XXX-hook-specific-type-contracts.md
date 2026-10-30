@@ -161,10 +161,10 @@ payload and cannot add decisions. Existing optional verdict metadata
 (reason, message, warnings, approval on deny, evidence, and result labels)
 remains available.
 
-Each hook has a named response extending `HooksResponse` and a matching
-handler alias using the same request/response pattern. `PreToolHookTransform`
-is `{ args: JsonObject }`, replacing the complete arguments rather than
-exposing a path/value patch. The other hooks use
+Each hook has a named response extending `HooksResponse`; these definitions
+describe data only, not callback signatures or dispatch behavior.
+`PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
+arguments rather than exposing a path/value patch. The other hooks use
 `UnresolvedHookTransform = unknown` as an explicit placeholder until their
 transform payloads are designed; this does not assert that every hook permits
 transforms. In particular, the current spec forbids transforms for
