@@ -185,7 +185,7 @@ export interface PreToolHookRequest extends HooksRequest {
 
 /** Replaces the complete tool args for the pre-tool hook. */
 export interface PreToolHookTransform {
-  args: JsonObject;
+  args: PreToolHookRequest["tool_call"]["args"];
 }
 
 export interface PreToolHookResponse
