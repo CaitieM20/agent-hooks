@@ -4330,8 +4330,8 @@ mod tests {
         // One schema file per contract version. The 1.0 file names
         // 1.0 alone; the file for the current version names it and
         // every version the loader accepts is covered by some file.
-        let schema_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../spec/0.1.0/schema/generated");
+        let schema_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../spec/0.1.0/schema/generated");
         let mut covered: Vec<String> = Vec::new();
         for v in SUPPORTED_DECLARATION_VERSIONS {
             let (maj, min) = parse_declaration_version(v).unwrap();
