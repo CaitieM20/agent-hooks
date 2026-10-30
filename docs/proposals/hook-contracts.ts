@@ -21,8 +21,8 @@ export type JsonObject = { [key: string]: JsonValue };
  * TypeScript does not enforce the scalar constraints below, exact object keys,
  * or JSON serializability. Validate data at the wire boundary.
  * Hook interfaces are erased at runtime: hook-bound dispatch retains identity.
- * A wire adapter flattens agentContext and hook payloads, then supplies
- * interception_point and target.
+ * The typed request keeps shared metadata flat and separate from hook payload
+ * fields; a wire adapter supplies interception_point and target.
  */
 export interface AgentContext {
   /** @pattern ^agent-hooks/\d+\.\d+$ */
@@ -47,11 +47,10 @@ export interface AgentContext {
 }
 
 /**
- * Generic extension-friendly request envelope. Hook-specific request
- * interfaces add their required payload properties at the top level.
+ * Generic extension-friendly request envelope. Shared AgentContext metadata
+ * and each hook's required payload properties are all top-level.
  */
-export interface HooksRequest {
-  agentContext: AgentContext;
+export interface HooksRequest extends AgentContext {
   [extension: string]: unknown;
 }
 
