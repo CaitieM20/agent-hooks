@@ -159,13 +159,17 @@ the existing inventory above.
 `verdict: Verdict<TTransform>`; its generic specializes only the transform
 payload and cannot add decisions. Existing optional verdict metadata
 (reason, message, warnings, approval on deny, evidence, and result labels)
-remains available.
+remains available. The shared `AllowVerdict`, `DenyVerdict`, and
+`TransformVerdict<TTransform>` compose into `Verdict<TTransform>`, while
+`NonTransformVerdict` contains only allow/deny.
 
-Each hook has a named response extending `HooksResponse`; these definitions
-describe the data contract. A separate SDK-facing section pairs each request
-with its matching response using a synchronous `HookHandler<TRequest,
-TResponse>` signature. This illustrates the type pairing only; execution and
-asynchronous scheduling remain SDK decisions outside this contract sketch.
+Each hook has a named response using the shared verdict model; transformable
+hooks extend `HooksResponse`, while startup and shutdown responses directly
+carry `NonTransformVerdict`. These definitions describe the data contract. A
+separate SDK-facing section pairs each request with its matching response
+using a synchronous `HookHandler<TRequest, TResponse>` signature. This
+illustrates the type pairing only; execution and asynchronous scheduling
+remain SDK decisions outside this contract sketch.
 `PreToolHookTransform` is `{ args: JsonObject }`, replacing the complete
 arguments rather than exposing a path/value patch. This intentionally differs
 from current `pre_tool_call` wire behavior, where a `$target`-rooted path may
@@ -189,9 +193,11 @@ roots outside `$target`/`$policy_target` retain
 validated against the target but not applied.
 
 The current spec forbids transforms for `agent_startup` and `agent_shutdown`;
-their response types use `HooksResponse<never>` so those data contracts do not
-permit a transform verdict. These shapes reflect existing behavior and do not
-change the wire contract, SDK, or verdict validation rules.
+their response types explicitly use `NonTransformVerdict`. The corresponding
+generated startup/shutdown response schemas should expose only allow/deny
+alternatives. These TypeScript sketches describe intended shapes only and do
+not add runtime JSON validation or change the current wire contract, SDK, or
+verdict validation rules.
 
 The broader wire-oriented sketches below remain alternatives for
 discussion, not the standalone artifact's API shape.

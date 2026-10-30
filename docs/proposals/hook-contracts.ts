@@ -94,16 +94,24 @@ export interface Transform {
   value?: JsonValue;
 }
 
-/**
- * The decision set is centralized; hooks may specialize only the transform
- * payload, not add or remove decisions.
- */
-export type Verdict<TTransform = Transform> = VerdictFields &
-  (
-    | { decision: "allow" }
-    | { decision: "deny"; approval?: JsonObject }
-    | { decision: "transform"; transform: TTransform }
-  );
+export type AllowVerdict = VerdictFields & { decision: "allow" };
+
+export type DenyVerdict = VerdictFields & {
+  decision: "deny";
+  approval?: JsonObject;
+};
+
+export type TransformVerdict<TTransform> = VerdictFields & {
+  decision: "transform";
+  transform: TTransform;
+};
+
+export type NonTransformVerdict = AllowVerdict | DenyVerdict;
+
+/** Hooks may specialize transform payloads, but cannot add decision variants. */
+export type Verdict<TTransform = Transform> =
+  | NonTransformVerdict
+  | TransformVerdict<TTransform>;
 
 /** Generic data response envelope; specialized responses narrow `verdict`. */
 export interface HooksResponse<TTransform = Transform> {
@@ -119,8 +127,9 @@ export interface AgentStartupHookRequest extends HooksRequest {
   };
 }
 
-export interface AgentStartupHookResponse
-  extends HooksResponse<never> {}
+export interface AgentStartupHookResponse {
+  verdict: NonTransformVerdict;
+}
 
 // ---------------------------------------------------------------------------
 // Hook: input
@@ -234,8 +243,9 @@ export interface AgentShutdownHookRequest extends HooksRequest {
   };
 }
 
-export interface AgentShutdownHookResponse
-  extends HooksResponse<never> {}
+export interface AgentShutdownHookResponse {
+  verdict: NonTransformVerdict;
+}
 
 // ===========================================================================
 // SDK-facing handler pairing (separate from serialized data contracts)
