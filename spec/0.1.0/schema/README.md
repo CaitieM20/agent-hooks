@@ -1,5 +1,9 @@
 # Schema source and generated output
 
+This is the released 0.1.0 schema folder. It is immutable: change schema
+shapes in [`spec/draft/schema/src/`](../../draft/schema/src/) instead. SDKs
+and the Python mirror are pinned to this folder for now.
+
 The TypeScript files in `src/` are the editable schema source.
 `generated/` contains the committed, normative JSON Schemas consumed by
 validators and SDKs. Do not edit generated JSON by hand.
@@ -26,21 +30,21 @@ Edit the relevant file in `src/`, regenerate, and commit source and output
 together. `check:schema` type-checks the source and rejects missing, changed
 or unexpected generated schemas. Equivalence checks accept Git revisions
 before and after this layout change, a schema output directory, or a
-`spec/schema/` directory containing `generated/`. They compare schemas by
+a `schema/` directory containing `generated/`. They compare schemas by
 their stable published identities, not checkout paths.
 
 Refresh the Python mirror as in
-[`schema-drift.yml`](../../.github/workflows/schema-drift.yml):
+[`schema-drift.yml`](../../../.github/workflows/schema-drift.yml):
 
 ```bash
-cp spec/schema/generated/*.schema.json sdk/python/python/agent_hooks/schema/
-cp spec/schema/generated/strict-contexts/*.schema.json sdk/python/python/agent_hooks/schema/agent-context/
+cp spec/0.1.0/schema/generated/*.schema.json sdk/python/python/agent_hooks/schema/
+cp spec/0.1.0/schema/generated/strict-contexts/*.schema.json sdk/python/python/agent_hooks/schema/agent-context/
 ```
 
 Run these copy commands from the repository root after generation.
 Vendoring copies only generated JSON; the Python package keeps its existing
 `schema/agent-context/` resource paths. Run the schema-lint CI checks when
-changing schema shapes. See [Contributing](../../CONTRIBUTING.md#schema-source)
+changing schema shapes. See [Contributing](../../../CONTRIBUTING.md#schema-source)
 for source annotations and the broader SDK test matrix.
 
 ## Filesystem paths are not public schema identities
