@@ -30,7 +30,7 @@ and the indicated closed per-hook schema.
 | [AgentContext/output.json](AgentContext/output.json) | `strict-contexts/output.schema.json` |
 | [AgentContext/agent-shutdown.json](AgentContext/agent-shutdown.json) | `strict-contexts/agent_shutdown.schema.json` |
 | [Verdict/*.json](Verdict/) | `verdict.schema.json` |
-| [InterceptorResponse/*-envelope.json](InterceptorResponse/) | `interceptor-response.schema.json` |
+| [InterceptorResponse/*-envelope.json](InterceptorResponse/) | `interceptor-response.schema.json` and `#/$defs/ResponseEnvelope` |
 | [ApprovalRequest/collection-access.json](ApprovalRequest/collection-access.json) | `approval.schema.json#/$defs/request` |
 | [ApprovalResolution/*.json](ApprovalResolution/) | `approval.schema.json#/$defs/resolution` |
 | [HostDeclaration10/document-policy.json](HostDeclaration10/document-policy.json) | `host-declaration-1.0.schema.json` |
@@ -66,49 +66,31 @@ declaration consistency, transform application, or other cross-field semantics.
 
 ## Validate locally
 
-Run the following Python from the repository root in an environment with the
-repository's existing Python development dependencies (`jsonschema` and
-`referencing`). It validates every JSON instance, including approval fragments,
+Run the following commands from the repository root after installing the
+existing TypeScript development dependencies (`npm ci` in `sdk/typescript`).
+The check uses AJV's Draft 2020-12 support with `ajv-formats` and validates
+every JSON instance, including approval fragments,
 against only the draft schemas. References are registered under their
 published `$id` values, including the per-hook `agent-context/` identities;
 validation does not fetch schemas or mix in released definitions.
 
-```python
-import json
-from pathlib import Path
-
-from jsonschema import Draft202012Validator, FormatChecker
-from referencing import Registry, Resource
-
-root = Path("spec") / "draft" / "schema"
-schemas = [json.loads(p.read_text()) for p in (root / "generated").rglob("*.json")]
-registry = Registry().with_resources(
-    (s["$id"], Resource.from_contents(s)) for s in schemas
-)
-base = "https://responsibleai.github.io/agent-hooks/schema/v0.1/"
-mapping = {
-    "AgentContext": "agent-context.schema.json",
-    "Verdict": "verdict.schema.json",
-    "InterceptorResponse": "interceptor-response.schema.json",
-    "ApprovalRequest": "approval.schema.json#/$defs/request",
-    "ApprovalResolution": "approval.schema.json#/$defs/resolution",
-    "HostDeclaration10": "host-declaration-1.0.schema.json",
-    "HostDeclaration11": "host-declaration-1.1.schema.json",
-    "InterceptionRecord": "interception-record.schema.json",
-    "InterceptionPoint": "interception-point.schema.json",
-}
-files = sorted((root / "examples").rglob("*.json"))
-assert files, "No examples found"
-for path in files:
-    instance = json.loads(path.read_text())
-    refs = [mapping[path.parent.name]]
-    if path.parent.name == "AgentContext":
-        refs.append(f"agent-context/{instance['interception_point']}.schema.json")
-    if path.parent.name == "Verdict":
-        refs.append("interceptor-response.schema.json")
-    for ref in refs:
-        Draft202012Validator(
-            {"$ref": base + ref}, registry=registry, format_checker=FormatChecker()
-        ).validate(instance)
-print(f"Validated {len(files)} JSON examples")
+```bash
+cd sdk/typescript
+node scripts/check-schema-examples.mjs
+node --test test/schema-examples.test.mjs
 ```
+
+Both commands run in CI's TypeScript job using the existing locked dependencies.
+The check recursively enumerates all example JSON files and requires the
+`TypeName/file.json` layout. New files in a mapped type directory are checked
+automatically; a new type requires an explicit mapping in
+[`check-schema-examples.mjs`](../../../../sdk/typescript/scripts/check-schema-examples.mjs)
+and a row in the table above. Unknown types or nested/unmapped files fail rather
+than being skipped. Invalid JSON, schema errors, unresolved references, and
+instance validation errors also fail the check. Contexts are checked against
+both the union and the closed hook variant; bare verdicts are also checked as
+InterceptorResponses, while envelope examples must satisfy ResponseEnvelope.
+
+Regression tests mutate temporary copies only, exercising invalid instances in
+every type, new mapped/unmapped files, invalid JSON, closed context variants,
+format validation, envelope separation, and schema/reference failures.
