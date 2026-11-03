@@ -6,9 +6,7 @@ default. SDKs and the Python mirror are pinned to
 [`spec/0.1.0/schema/`](../../0.1.0/schema/) for now.
 
 The TypeScript files in `src/` are the editable schema source.
-`generated/` contains the committed draft JSON Schemas. Released SDK consumers
-remain pinned as described above; do not treat these artifacts as an SDK
-migration. Do not edit generated JSON by hand.
+`generated/` contains the committed draft JSON Schemas. Do not edit generated JSON by hand.
 
 - Root schemas are written to `generated/*.schema.json`.
 - `generated/strict-contexts/*.schema.json` contains the per-interception-point
