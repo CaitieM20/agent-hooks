@@ -1,11 +1,10 @@
 # Agent Hooks Specification — Version 0.1
 
 > **Draft:** This is the working draft for the next specification release.
-> It is not a released specification. The latest released specification is
-> [0.1.0](../0.1.0/AGENT-HOOKS-0.1.md).
+> It is not a released specification.
 
-> **Status:** Beta · **Version:** `0.1.0-beta` · **Date:** 2026-10-02
-> **Editors:** Responsible AI / Agent Governance Toolkit
+> **Status:** Beta · **Version:** `draft`
+> **Editors:** Responsible AI
 >
 > This document defines a framework-neutral contract for **lifecycle hooks** in
 > AI agent systems: a fixed set of interception points, the context payload a host
@@ -21,7 +20,7 @@
 1. [Introduction](#1-introduction)
 2. [Terminology](#2-terminology)
 3. [Interception points](#3-interception-points)
-4. [Agent context](#4-agent-context)
+4. [Hooks Request](#4-hooks-request)
 5. [Verdict](#5-verdict)
 6. [Host obligations](#6-host-obligations)
 7. [Interceptor contract and composition](#7-interceptor-contract-and-composition)
@@ -49,8 +48,8 @@ lifecycle points by returning a verdict the host MUST act on). It defines:
 
 - the closed set of **interception points** at which a host MUST invoke registered
   interceptors,
-- the **`AgentContext`** JSON payload a host MUST construct at each interception point,
-- the per-hook **response** JSON payload an interceptor MUST return,
+- the **`HooksRequest`** JSON payload a host MUST construct at each interception point. Each interception point has a corresponding request shape.
+- the **`HooksResponse`** JSON payload an interceptor MUST return. Each interception point has a corresponding response shape.
 - the **obligations** a host MUST honour for each verdict decision,
 - the closed set of **composition profiles** by which a host combines the
   verdicts of multiple interceptors (§7),
@@ -64,10 +63,10 @@ as the Agent Control Specification (ACS).
 
 This specification is a control plane, not a telemetry plane. It does NOT
 define a passive observation, tracing, or metrics interface. Every
-registered interceptor MUST return the response for the hook it receives; an
+registered interceptor MUST compute a `Verdict` and return it as part of the `HooksResponse`; an
 interceptor that has no control decision to make returns `allow`. Section 5.5
 defines optional metadata on that flat response, not a nested verdict envelope.
-A host MAY surface `AgentContext`
+A host MAY surface `HooksRequest`
 to its own telemetry, but that is outside this contract.
 
 ### 1.2 Key words
@@ -81,11 +80,11 @@ capitals.
 
 [Pure Specification]
 
-- **Determinism.** Given the same `AgentContext` and the same interceptor state, a
-  interceptor SHOULD return the same hook response. A host MUST NOT depend on
+- **Determinism.** Given the same `HooksRequest` and the same interceptor state, a
+  interceptor SHOULD return the same `HooksResponse`. A host MUST NOT depend on
   non-determinism for correctness.
-- **Fail closed.** A host that cannot construct a valid `AgentContext`, cannot
-  reach a registered interceptor, or receives an invalid hook response MUST treat the
+- **Fail closed.** A host that cannot construct a valid `HooksRequest`, cannot
+  reach a registered interceptor, or receives an invalid `HooksResponse` MUST treat the
   outcome as `deny` with a `host_error:*` reason per §11. The one opening is
   the per-binding failure posture of §6.3: an administrator can set a
   binding's `on_error` to `continue`, and only for the three interceptor
@@ -114,7 +113,7 @@ not a security certification.
   host that skips interception points, ignores verdicts, or
   misreports enforcement mode.
 - Registered interceptors are inside the host process and are fully
-  trusted by the host. They receive the raw hook payload (which may
+  trusted by the host. They receive the `HooksRequest` payload (which may
   contain user PII, secrets in tool arguments, and model output) and
   any registered interceptor MAY return `deny` at any interception point, or
   `transform` at the six points permitted by §3. Registering an interceptor is equivalent to
@@ -141,12 +140,11 @@ not a security certification.
 | Term | Definition |
 | --- | --- |
 | **Host** | An agent framework, SDK, or runtime that executes an agent loop and dispatches to interceptors at each interception point. |
-| **Interceptor** | A component registered with the host that receives a hook request and returns its matching hook response. |
+| **Interceptor** | A component registered with the host that receives a `HooksRequest` and returns its matching `HooksResponse`. |
 | **Interception point** | One of the eight named lifecycle positions in §3. |
-| **Agent context** | The JSON payload the host constructs at an interception point per §4. |
-| **Transformable member** | The request member identified in §3 that a whole-value transform replaces. There is no standardized `target` request property. |
-| **Hook response** | The flat JSON object an interceptor returns per §5, containing decision fields and optional root `extensions`. |
-| **Verdict** | The decision content of a response: `allow`, `deny`, or (where permitted) `transform`, with its decision metadata. Not a nested response member. |
+| **`HooksRequest`** | The JSON payload the host constructs at an interception point per §4. |
+| **`HooksResponse`** | The JSON object an interceptor returns per §5, containing decision fields and optional root `extensions`. |
+| **Verdict** | The decision content of a `HooksResponse`: `allow`, `deny`, or (where permitted) `transform`, with its decision metadata. |
 | **Action** | The host operation immediately following a `pre_*` interception point or immediately preceding a `post_*` interception point (a model call, a tool invocation, emitting output). |
 | **Permit verdict** | A verdict whose `decision` is `allow` or `transform`. |
 | **Block verdict** | A verdict whose `decision` is `deny` (with or without an `approval` block). |
@@ -164,8 +162,9 @@ not a security certification.
 
 [Pure Specification]
 
-A host MUST emit the following eight interception points. The set is closed; a host
-MUST NOT emit an `AgentContext` whose `interception_point` is not one of these values.
+A host MUST emit the following eight interception points. The set is closed;
+a host MUST NOT emit a `HooksRequest` whose `interception_point` is not one of
+these values.
 
 | `interception_point` | Position in the agent loop | Transformable request member (§4.3) | `transform` permitted |
 | --- | --- | --- | --- |
@@ -190,7 +189,7 @@ Within a single session a host MUST emit interception points such that:
    hooks that result from it.
 4. Each `pre_model_call` is followed by exactly one corresponding
    `post_model_call` unless the model call is blocked per §6.
-   `request_id` (§4.5), when present, is the pairing key; a host that
+   `request_id` (§4.2), when present, is the pairing key; a host that
    emits concurrent model calls SHOULD populate it.
 5. Each `pre_tool_call` is followed by exactly one `post_tool_call` for the
    same `tool_call.id` unless the tool call is blocked per §6.
@@ -213,14 +212,13 @@ capabilities to the CTK per §13.2 and MUST still emit `agent_startup`, `input`,
 
 ---
 
-## 4. Agent context
+## 4. Hooks Request
 
 [Pure Specification]
 
-A `AgentContext` is a JSON object. Its schema has four field tiers:
+A `HooksRequest` is a JSON object. Its schema has four field tiers:
 
 - **required** fields are REQUIRED at every interception point.
-- **conditional** fields are REQUIRED at the specific interception point(s) listed.
 - **optional** fields are well-known and OPTIONAL.
 - **namespaced** fields are extensions under `extensions.<namespace>`.
 
@@ -232,6 +230,8 @@ namespaced `extensions`. Neither an extra `target` property nor any other
 undeclared property selects what a transform replaces.
 
 ### 4.1 Required core
+
+Every `HooksRequest` MUST contain the following required core fields:
 
 ```jsonc
 {
@@ -254,11 +254,28 @@ undeclared property selects what a transform replaces.
 | `agent.framework` | string | Lowercase identifier of the host framework, matching `^[a-z0-9_-]+$` (e.g., `langchain`, `openai-agents`, `semantic-kernel`). |
 | `session.id` | nonempty string | Stable identifier for the run/conversation. MUST be stable across all hooks in one session. |
 
-### 4.2 Conditional — per-interception-point required fields
+The following well-known metadata fields are OPTIONAL at every interception
+point:
 
-A host MUST populate the following fields at the indicated interception point in
-addition to the required core. These are schematic `jsonc` examples: angle-bracket
-values and alternatives describe types rather than literal JSON values.
+A host SHOULD populate these fields when the underlying framework exposes the
+data; their absence is conformant.
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `agent.name`, `agent.version` | string | Name and version of the agent definition. |
+| `session.started_at` | string | RFC 3339 timestamp for the start of the session. |
+| `session.turn` | integer ≥ 0 | Turn number within the session. |
+| `trace.trace_id`, `trace.span_id` | string | W3C Trace Context hexadecimal identifiers. |
+| `tenant.id`, `tenant.name` | string | Tenant identifiers and display name. |
+| `actor.id`, `actor.kind` | string | Actor identity; `actor.kind` MUST be `human`, `service`, or `agent`. |
+| `budgets.tool_call_count`, `budgets.token_count`, `budgets.elapsed_seconds`, `budgets.cost_usd` | number | Host-provided budget counters. |
+
+### 4.2 Per Hook Fields
+
+Each `interception_point` has its own required fields. A host MUST populate
+the following fields in addition to the required core.
+The host SHOULD populate OPTIONAL fields when the underlying framework
+exposes the data; their absence is conformant.
 
 #### `agent_startup`
 
@@ -270,6 +287,10 @@ values and alternatives describe types rather than literal JSON values.
 }
 ```
 
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `agent_init.tools_registered` | array of strings | List of tools registered for the agent. |
+
 #### `input`
 
 ```jsonc
@@ -280,6 +301,10 @@ values and alternatives describe types rather than literal JSON values.
   }
 }
 ```
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `input.content` | any JSON | Content of the input. |
+| `input.role` | string | MUST be one of `user`, `system`, or `external`. |
 
 #### `pre_model_call`
 
@@ -289,6 +314,15 @@ values and alternatives describe types rather than literal JSON values.
   "messages": [ { "role": "string", "content": <any JSON> }, ... ]
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `model.id` | string | Identifier of the model. |
+| `model.vendor` | string | OPTIONAL model provider identifier. |
+| `model.params` | object | OPTIONAL model parameters. |
+| `messages` | array of objects | Full message chain sent to the model. |
+| `tools` | array of `{name, description?, schema?}` | OPTIONAL tools available to the model. |
+| `request_id` | string | OPTIONAL request identifier; when present, pairs this request with its `post_model_call`. |
 
 #### `post_model_call`
 
@@ -302,6 +336,18 @@ values and alternatives describe types rather than literal JSON values.
   }
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `model.id` | string | Identifier of the model. |
+| `model.vendor` | string | OPTIONAL model provider identifier. |
+| `model.params` | object | OPTIONAL model parameters. |
+| `response.content` | any JSON | Content of the model response. |
+| `response.tool_calls` | array of objects | Tool calls requested by the model. MUST be present and MUST be an empty array when the model returned no tool calls. |
+| `response.finish_reason` | string | Reason the model finished. |
+| `request_id` | string | OPTIONAL request identifier; when present, pairs this response with its `pre_model_call`. |
+| `usage` | object | OPTIONAL token-usage metadata. |
+| `usage.prompt_tokens`, `usage.completion_tokens` | integer ≥ 0 | OPTIONAL counters; each member may be omitted. |
 
 `response.tool_calls` MUST be present and MUST be an empty array when the model
 returned no tool calls.
@@ -317,6 +363,13 @@ model response. The subsequent tool hooks require nonempty `tool_call.id` and
 }
 ```
 
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `tool_call.id` | string | Identifier of the tool call. |
+| `tool_call.name` | string | Name of the tool. |
+| `tool_call.args` | object | Arguments passed to the tool. |
+| `tool_call.content_hash` | string | OPTIONAL host-opaque `sha256:<64 lowercase hex digits>` value; its preimage is host-defined, so it is only comparable within one host. Portable content binding is provided by `context_identity` (§10). |
+
 #### `post_tool_call`
 
 ```jsonc
@@ -325,6 +378,16 @@ model response. The subsequent tool hooks require nonempty `tool_call.id` and
   "tool_result": { "value": <any JSON>, "is_error": false }
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `tool_call.id` | string | Identifier of the tool call. |
+| `tool_call.name` | string | Name of the tool. |
+| `tool_call.args` | object | Arguments passed to the tool. |
+| `tool_result.value` | any JSON | Result returned by the tool. |
+| `tool_result.is_error` | boolean | Whether the tool result is an error. |
+| `tool_call.content_hash` | string | OPTIONAL host-opaque `sha256:<64 lowercase hex digits>` value; its preimage is host-defined, so it is only comparable within one host. Portable content binding is provided by `context_identity` (§10). |
+| `tool_result.duration_ms` | number ≥ 0 | OPTIONAL tool-call duration in milliseconds. |
 
 `tool_call.args` at `post_tool_call` MUST reflect the arguments actually passed
 to the tool, i.e., the post-`transform` value when a `transform` verdict was
@@ -338,6 +401,11 @@ applied at `pre_tool_call`.
 }
 ```
 
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `output.content` | any JSON | Content of the output. |
+
+
 #### `agent_shutdown`
 
 ```jsonc
@@ -345,6 +413,13 @@ applied at `pre_tool_call`.
   "summary": { "reason": "completed" | "error" | "cancelled" }
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `summary.reason` | string | Reason the agent shut down. |
+| `summary.tool_calls` | integer ≥ 0 | OPTIONAL number of tool calls made during the session. |
+| `summary.errors` | integer ≥ 0 | OPTIONAL number of errors encountered. |
+| `summary.duration_seconds` | number ≥ 0 | OPTIONAL session duration in seconds. |
 
 ### 4.3 Target
 
@@ -384,36 +459,7 @@ Neither the core nor any SDK normalizes values. A value is either
 accepted as supplied or rejected with an actionable message; nothing is
 silently rewritten.
 
-### 4.5 Optional — well-known fields
-
-A host SHOULD populate the following fields when the underlying framework
-exposes the data. Absence is conformant.
-
-| Field | Interception point(s) | Type |
-| --- | --- | --- |
-| `agent.name`, `agent.version` | all | string |
-| `session.started_at` | all | RFC 3339 |
-| `session.turn` | all | integer ≥ 0 |
-| `model.vendor`, `model.params` | `*_model_call` | string, object |
-| `request_id` | `*_model_call` | string |
-| `tools` | `pre_model_call` | array of `{name, description?, schema?}` |
-| `usage.prompt_tokens`, `usage.completion_tokens` | `post_model_call` | optional integer ≥ 0 counters |
-| `tool_result.duration_ms` | `post_tool_call` | number ≥ 0 |
-| `tool_call.content_hash` | `pre_tool_call` | string `sha256:<hex>`. **Host-opaque**: the preimage is host-defined, so values are comparable only within one host and carry no cross-host meaning. Portable content binding is what `context_identity` (§10) provides. |
-| `messages` | any | full message chain |
-| `trace.trace_id`, `trace.span_id` | all | W3C Trace Context hex strings |
-| `tenant.id`, `tenant.name` | all | string |
-| `actor.id`, `actor.kind` | all | string, `human`\|`service`\|`agent` |
-| `budgets.tool_call_count`, `.token_count`, `.elapsed_seconds`, `.cost_usd` | all | number |
-
-The draft request types and generated schemas scope `request_id` to
-`pre_model_call` and `post_model_call`, `usage` to `post_model_call`, and
-`tools` to `pre_model_call`. These point-specific declarations constrain the
-typed contract; because request roots are open, an undeclared extra property
-may still be accepted as an extension by a permissive validator, but carries no
-standardized semantics (§4).
-
-### 4.6 Namespaced — extensions
+### 4.5 Namespaced — extensions
 
 ```jsonc
 {
@@ -618,7 +664,7 @@ shape applies in-process and across a hosted or cross-process transport:
 
 There is no draft `interceptor-response.schema.json`; select the matching hook
 response root in §5. `extensions`, when present, MUST be a JSON object and uses the
-§4.6 namespace grammar and reservations (`acs`, `ctk`, `agent_hooks`).
+§4.5 namespace grammar and reservations (`acs`, `ctk`, `agent_hooks`).
 Providers MUST NOT
 use those namespaces for provider-specific data.
 When the response is received as JSON text, a duplicate member at any
@@ -1212,7 +1258,7 @@ order carries no meaning are sets; `bindings` is an ordered list.
 `host.name` follows the `agent.framework` grammar (§4.1). `extensions`
 is kept verbatim and never read by the loader, which checks the key
 grammar only and does not check namespaces; the reserved namespaces of
-§4.6 bind the writer of the document, not the loader. This differs
+§4.5 bind the writer of the document, not the loader. This differs
 from binding kinds on purpose. A kind is a key the loader resolves, so
 a reserved segment would let a host kind shadow a kind this
 specification or the conformance kit defines later, and the registry
@@ -1620,7 +1666,7 @@ Rules:
   request fields. The host MUST document the path notation it uses; this
   proposal does not choose a new redaction-path grammar. These descriptions
   are metadata, not executable transform selectors. `<host>` must be a
-  namespace the host owns under §4.6, not a reserved namespace it does not own.
+  namespace the host owns under §4.5, not a reserved namespace it does not own.
 
 ---
 
@@ -1816,7 +1862,7 @@ of the record.
 | `identity_provider` | The declared provider (§10.1). |
 | `session_id`, `sequence` | Copied from the context; records are totally ordered within a session. |
 | `timestamp` | OPTIONAL. The context's RFC 3339 `timestamp`, copied verbatim — the event time audit/SIEM sinks index on. Absent when the context lacked the field. |
-| `trace` | OPTIONAL. `{trace_id?, span_id?}` echoed from the context's optional `trace` block (§4.5, W3C Trace Context). Payload-free identifiers only; absent when the context carried neither member. Lets a record join the host's distributed trace without out-of-band stitching. |
+| `trace` | OPTIONAL. `{trace_id?, span_id?}` echoed from the context's optional `trace` block (§4.1, W3C Trace Context). Payload-free identifiers only; absent when the context carried neither member. Lets a record join the host's distributed trace without out-of-band stitching. |
 | `decided_by` | Registration index of the interceptor whose verdict won the aggregation (§7.3) or whose liftable deny was consulted (§7.6). A §6.3 failure deny (`interceptor_failed`, `interceptor_timeout`, `verdict_invalid`) carries the **failing interceptor's** index, in every profile. A §6.3.1 substituted allow follows the pure-allow rule: it never carries the failing index, and an emission where every verdict is an allow has `decided_by: null`. `null` is reserved for pure-allow combinations, §5.2 transform-application failures, and profile-synthesized verdicts (`transform_conflict`, `composition_disagreement`, `no_interceptor`, identity-provider rejection). |
 | `composition` | The profile and knobs in effect (§7.1). REQUIRED. Knob members the profile consults MUST be present with their **resolved** values (the §7.2 defaults filled in when the host left them unset); knobs the profile never consults MUST be absent. |
 | `declaration` | OPTIONAL. The host declaration contract version the emitter was built from (§7.7.8), e.g. `agent-hooks-declaration/1.0`. Present iff the emitter was built from a declaration document; absent for a host configured in code. Never defaulted. |
@@ -1855,7 +1901,7 @@ own, not on a verdict. SDK emitters expose this as the
 through the same record stream (sink, then buffer) as every emission.
 
 *Informative — OpenTelemetry alignment.* The optional context fields
-`usage.prompt_tokens`/`usage.completion_tokens` (§4.5) correspond to
+`usage.prompt_tokens`/`usage.completion_tokens` (§4.2) correspond to
 the OTel GenAI semantic-convention attributes `gen_ai.usage.input_tokens`/
 `gen_ai.usage.output_tokens`, and the record's `trace` block carries
 W3C Trace Context identifiers as used by OTel spans. Hosts emitting
@@ -2104,7 +2150,7 @@ rules of §6.3 and §7, the §6.3.1 `continue` substitution), which vectors ran 
 so a claim communicates *what was exercised*, not a tier name.
 
 Partial adapters under development can run vector subsets locally but
-MUST NOT claim conformance. Populating optional (§4.5) fields where the
+MUST NOT claim conformance. Populating optional (§4.1–§4.2) fields where the
 framework has the data is a SHOULD and is not conformance-gated.
 
 ### 13.2 CTK
