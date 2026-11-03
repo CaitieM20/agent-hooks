@@ -222,13 +222,6 @@ A `HooksRequest` is a JSON object. Its schema has four field tiers:
 - **optional** fields are well-known and OPTIONAL.
 - **namespaced** fields are extensions under `extensions.<namespace>`.
 
-The machine-readable schema is `spec/draft/schema/generated/agent-context.schema.json` with
-per-point schemas at `spec/draft/schema/generated/strict-contexts/<interception_point>.schema.json`.
-Despite the directory name, request roots are open: undeclared root members may
-validate but have no standardized semantics. Portable additions SHOULD use
-namespaced `extensions`. Neither an extra `target` property nor any other
-undeclared property selects what a transform replaces.
-
 ### 4.1 Required core
 
 Every `HooksRequest` MUST contain the following required core fields:
@@ -421,23 +414,8 @@ applied at `pre_tool_call`.
 | `summary.errors` | integer ≥ 0 | OPTIONAL number of errors encountered. |
 | `summary.duration_seconds` | number ≥ 0 | OPTIONAL session duration in seconds. |
 
-### 4.3 Target
 
-[Pure Specification]
-
-The heading is retained for existing section links. There is no standardized
-`target` request property. The transformable member in §3 is the slice the
-guarded action consumes (`pre_*`, `input`) or has produced (`post_*`, `output`).
-A host MUST apply a transform only to that member, per §5.2, such that the
-replacement is observable in the subsequent action or incorporation of a
-post-action result. It MUST NOT maintain a second, independently mutable copy
-under a `target` property as part of this contract.
-
-A `transform` verdict at `agent_startup` or `agent_shutdown` MUST be rejected
-by the host with `host_error:transform_target_forbidden` per §11.
-The lifecycle response schemas also exclude the `transform` decision.
-
-### 4.4 Value domain
+### 4.3 Value domain
 
 [Pure Specification]
 
@@ -459,7 +437,7 @@ Neither the core nor any SDK normalizes values. A value is either
 accepted as supplied or rejected with an actionable message; nothing is
 silently rewritten.
 
-### 4.5 Namespaced — extensions
+### 4.4 Namespaced — extensions
 
 ```jsonc
 {
