@@ -152,7 +152,7 @@ not a security certification.
 | **Composition profile** | The host-declared rule set (§7.2) for how the verdicts of multiple interceptors combine into one combined verdict at one emission. |
 | **Combined verdict** | The single verdict that results from composing all interceptor verdicts (and any approval resolution) at one emission; the verdict §6 obligations apply to. |
 | **Severity** | The total order on verdicts used by aggregation (§7.3): `deny` > liftable deny > `transform` > `allow`. |
-| **Identity provider** | The host-declared function that maps an agent context to its `context_identity` string (§10.1). |
+| **Identity provider** | The host-declared function that maps a `HooksRequest` to its `context_identity` string (§10.1). |
 | **Emission** | One invocation of the interception machinery at one interception point: context construction, interceptor dispatch per the profile, and record production. |
 | **CTK** | The Conformance Test Kit defined in §13 and shipped under `conformance/`. |
 
@@ -777,7 +777,7 @@ unless the host's own semantics terminate the turn.
 
 ### 6.3 Failure handling
 
-A host that fails to construct a valid `AgentContext` for an
+A host that fails to construct a valid `HooksRequest` for an
 interception point — including a context that fails the §4 envelope
 check — MUST treat the emission as
 `{"decision": "deny", "reason": "host_error:context_invalid"}` without
@@ -1840,7 +1840,7 @@ of the record.
 **Host projection failure.** The reserved reasons of §11 assume an
 emission: a context reached the emitter and something about it or its
 dispatch failed. A fault in the host's **own projection to the wire**
-— the host cannot construct an `AgentContext` for a point at all
+— the host cannot construct a `HooksRequest` for a point at all
 (e.g. a tool-call argument's property getter throws during to-wire
 conversion at the chat seam) — happens before anything exists to
 emit, and a host without further provision can only fail the action
@@ -1887,7 +1887,7 @@ projection failure). An interceptor MUST NOT emit a
 
 | Reason | Cause |
 | --- | --- |
-| `host_error:context_invalid` | The host could not construct a schema-valid `AgentContext`, or the `jcs-sha256` provider rejected its value domain (§10.2). |
+| `host_error:context_invalid` | The host could not construct a schema-valid `HooksRequest`, or the `jcs-sha256` provider rejected its value domain (§10.2). |
 | `host_error:interceptor_failed` | An interceptor raised or returned a non-JSON value. |
 | `host_error:interceptor_timeout` | An interceptor exceeded the host's timeout. |
 | `host_error:verdict_invalid` | An interceptor returned a value that fails the matching hook response schema or §5 semantic rules, including flat response metadata (§5.5). |
