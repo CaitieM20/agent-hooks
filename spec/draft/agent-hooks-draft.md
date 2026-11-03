@@ -459,73 +459,35 @@ does not enforce them.
 
 ---
 
-## 5. Verdict
+## 5. Hooks Responses & Verdicts
 
 [Pure Specification]
 
-An interceptor MUST return a flat JSON object conforming to the response schema
-for the request's `interception_point`, as mapped below. Decision fields and
-optional `extensions` are siblings; there is no nested `verdict` envelope.
-The section title is retained for existing links.
+An interceptor MUST return a `HooksResponse` conforming to the response schema
+for the request's `interception_point`. Each `HooksResponse` MUST contain a `Verdict`.
 
-| Request point | Response type | Schema in `schema/generated/` |
+| Interception Point | Hooks Response type |
 | --- | --- | --- |
-| `agent_startup` | `AgentStartupHookResponse` | [agent-startup-hook-response.schema.json](schema/generated/agent-startup-hook-response.schema.json) |
-| `input` | `InputHookResponse` | [input-hook-response.schema.json](schema/generated/input-hook-response.schema.json) |
-| `pre_model_call` | `PreModelHookResponse` | [pre-model-hook-response.schema.json](schema/generated/pre-model-hook-response.schema.json) |
-| `post_model_call` | `PostModelHookResponse` | [post-model-hook-response.schema.json](schema/generated/post-model-hook-response.schema.json) |
-| `pre_tool_call` | `PreToolHookResponse` | [pre-tool-hook-response.schema.json](schema/generated/pre-tool-hook-response.schema.json) |
-| `post_tool_call` | `PostToolHookResponse` | [post-tool-hook-response.schema.json](schema/generated/post-tool-hook-response.schema.json) |
-| `output` | `OutputHookResponse` | [output-hook-response.schema.json](schema/generated/output-hook-response.schema.json) |
-| `agent_shutdown` | `AgentShutdownHookResponse` | [agent-shutdown-hook-response.schema.json](schema/generated/agent-shutdown-hook-response.schema.json) |
+| `agent_startup` | `AgentStartupHookResponse` | 
+| `input` | `InputHookResponse` | 
+| `pre_model_call` | `PreModelHookResponse` | 
+| `post_model_call` | `PostModelHookResponse` |
+| `pre_tool_call` | `PreToolHookResponse` | 
+| `post_tool_call` | `PostToolHookResponse` | 
+| `output` | `OutputHookResponse` | 
+| `agent_shutdown` | `AgentShutdownHookResponse` |
 
-These response roots are closed. Unknown root members, the old nested envelope,
-and transforms belonging to a different hook are invalid. The generic
-`verdict.schema.json` describes the union of hook transform types and is not a
-substitute for these roots: it cannot select the valid transform from the
-request's `interception_point`. `Verdict<TTransform>` is decision-only in the
-schema source; `HooksResponse<TTransform>` intersects it with response metadata.
 
-```jsonc
-{
-  "decision": "allow" | "deny" | "transform",
-  "reason": "string",
-  "message": "string",
-  "warnings": [ { "reason": "string", "message": "string" }, ... ],
-  "approval": { },
-  "transform": <replacement for this hook, §5.2>,
-  "evidence": { "artefact": "string", "verification_pointers": { "<k>": "uri" } },
-  "result_labels": ["string", ...],
-  "extensions": { "<namespace>": <any JSON> }
-}
-```
 
-| Member | Required | Constraint |
-| --- | --- | --- |
-| `decision` | yes | `allow` or `deny`; also `transform` at the six points permitted by §3. |
-| `reason` | no | MUST NOT start with `host_error:`. Free-form machine identifier. |
-| `message` | no | Free-form human-readable text. |
-| `warnings` | no | Array of `{reason?, message?}` objects. Permitted on any decision. A `reason` MUST NOT start with `host_warning:` (§11.1). See §5.1. |
-| `approval` | no; only valid when `decision == "deny"` | JSON object (MAY be empty). Marks the deny as liftable by the approval seam (§9). MUST be absent for `allow` and `transform`. |
-| `transform` | iff `decision == "transform"` | See §5.2. MUST be absent for all other decisions. |
-| `evidence` | no | See §5.3. Serialized size MUST NOT exceed 10240 bytes. |
-| `result_labels` | no | Array of strings. See §5.4. |
-| `extensions` | no | Root response metadata, separate from the verdict. See §5.5. |
+### 5.1 Verdict
+Every `HooksResponse` contains a `Verdict`, which defines whether the Action is allowed to proceed as defined by the `decision`. The `decision` MUST be one of `allow`, `deny`, or `transform`.
 
-A host that receives a verdict that is not a JSON object, whose `decision` is
-absent or invalid, whose `reason` starts with `host_error:`, whose `transform`
-or `approval` presence violates the constraints above, whose `warnings` is not
-an array of objects, whose `warnings[].reason` starts with `host_warning:`,
-whose `evidence` is not an object, or whose
-`result_labels` is not an array of strings MUST treat it as
-`{"decision": "deny", "reason": "host_error:verdict_invalid"}`.
-
-### 5.1 Decision semantics
+#### 5.1.1 Decision semantics
 
 | Decision | Class | Semantics |
 | --- | --- | --- |
 | `allow` | permit | The action proceeds with the hook payload unchanged. |
-| `transform` | permit | The action proceeds with the hook's transformable member replaced per §5.2. |
+| `transform` | permit | The action proceeds with the hook's transformable member replaced per §5.1.2.4 |
 | `deny` | block | The action MUST NOT proceed. |
 | `deny` + `approval` | block (liftable) | The action MUST NOT proceed **unless** the approval seam (§9), consulted per the composition profile (§7), resolves to a permit verdict. A host with no registered resolver enforces the deny as-is; that is conformant behaviour, not an error. |
 
@@ -553,9 +515,64 @@ deny  >  deny+approval  >  transform  >  allow
 A plain deny dominates a liftable one: if any interceptor
 unconditionally denies, consulting an approver is pointless.
 
-### 5.2 Transform
+A host that receives a verdict that is not a JSON object, whose `decision` is
+absent or invalid, whose `reason` starts with `host_error:`, whose `transform`
+or `approval` presence violates the constraints above, whose `warnings` is not
+an array of objects, whose `warnings[].reason` starts with `host_warning:`,
+whose `evidence` is not an object, or whose
+`result_labels` is not an array of strings MUST treat it as
+`{"decision": "deny", "reason": "host_error:verdict_invalid"}`.
 
-A transform carries exactly one hook-specific replacement member:
+#### 5.1.2 DataTypes
+##### 5.1.2.1 Verdict Base
+Every `Verdict` MUST contain the following required members and MAY contain the following optional members:
+
+```jsonc
+{
+  "decision": "allow" | "deny" | "transform",
+  "reason": "string",
+  "message": "string",
+  "warnings": [ { "reason": "string", "message": "string" }, ... ],
+  "evidence": { "artefact": "string", "verification_pointers": { "<k>": "uri" } },
+  "result_labels": ["string", ...]
+}
+```
+
+| Member | Required | Constraint |
+| --- | --- | --- |
+| `decision` | yes | `allow` or `deny`; also `transform` at the six points permitted by §3. |
+| `reason` | no | MUST NOT start with `host_error:`. Free-form machine identifier. |
+| `message` | no | Free-form human-readable text. |
+| `warnings` | no | Array of `{reason?, message?}` objects. Permitted on any decision. A `reason` MUST NOT start with `host_warning:` (§11.1). See §5.1. |
+| `evidence` | no | See §5.3. Serialized size MUST NOT exceed 10240 bytes. |
+| `result_labels` | no | Array of strings. See §5.4. |
+
+##### 5.1.2.2 Allow Verdict Data
+An Allow Verdict is when `decision == "allow"`. There are no additional members on an Allow Verdict.
+
+```jsonc
+{
+  "decision": "approve",
+}
+```
+
+##### 5.1.2.3 Deny Verdict
+A Deny Verdict is when `decision == "deny"`. Deny Verdicts may contain the following optional members in support of creating a Liftable Deny.
+
+```jsonc
+{
+  "decision": "deny",
+  "approval": {}
+}
+```
+
+| Member | Required | Constraint |
+| --- | --- | --- |
+| `approval` | no | JSON object (MAY be empty). Marks the deny as liftable by the approval seam (§9).|
+
+
+##### 5.1.2.4 Transform Verdict
+A Transform Verdict is when `decision == "transform"`. Transform Verdicts MUST contain the following per interception point payload:
 
 | Hook | `transform` payload | Whole request member replaced |
 | --- | --- | --- |
@@ -567,7 +584,7 @@ A transform carries exactly one hook-specific replacement member:
 | `output` | `{ "output": <Output> }` | `output`, including `content` |
 
 The replacement types are the corresponding request member types in §4. For
-example, this is a complete `pre_tool_call` response, not a patch:
+example, this is a complete `pre_tool_call` response:
 
 ```json
 {
@@ -579,14 +596,6 @@ example, this is a complete `pre_tool_call` response, not a patch:
 - A host MUST replace the entire indicated member atomically. It MUST NOT merge
   objects, append messages, interpret paths, or treat omitted nested properties
   as instructions to preserve existing values.
-- The replacement MUST satisfy the corresponding request member's type and §4.4
-  value domain. Every required replacement member MUST be present. In particular,
-  `post_tool_call` permits an explicit `"value": null`, but absence of `value`
-  is invalid, not a synonym for null.
-- A replacement MUST NOT modify other context members. Replacing args preserves
-  `tool_call.id` and `name`; replacing a result value preserves `is_error` and
-  optional `duration_ms`. A model-response replacement includes its whole tool
-  call list, even when empty.
 - Shape/type failures at the response gate yield `host_error:verdict_invalid`
   per §6.3. A schema-valid replacement the host cannot apply yields
   `host_error:transform_invalid`. A lifecycle transform is forbidden per §4.3;
