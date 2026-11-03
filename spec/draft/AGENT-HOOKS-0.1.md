@@ -416,13 +416,12 @@ exposes the data. Absence is conformant.
 | `actor.id`, `actor.kind` | all | string, `human`\|`service`\|`agent` |
 | `budgets.tool_call_count`, `.token_count`, `.elapsed_seconds`, `.cost_usd` | all | number |
 
-**Open schema alignment:** The point column describes the intended semantic
-scope. Current `ContextMetadata` also declares `request_id`, `usage`, and the
-other optional payload members on every hook. Thus the generated schemas permit
-them more broadly; their presence at another point does not establish a new
-correlation or usage rule. Moving `request_id` to the two model requests and
-`usage` to the post-model request remains a separate schema correction. This
-proposal does not narrow request roots or change those declarations.
+The draft request types and generated schemas scope `request_id` to
+`pre_model_call` and `post_model_call`, `usage` to `post_model_call`, and
+`tools` to `pre_model_call`. These point-specific declarations constrain the
+typed contract; because request roots are open, an undeclared extra property
+may still be accepted as an extension by a permissive validator, but carries no
+standardized semantics (§4).
 
 ### 4.6 Namespaced — extensions
 
