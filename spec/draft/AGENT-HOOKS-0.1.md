@@ -4,6 +4,15 @@
 > It is not a released specification. The latest released specification is
 > [0.1.0](../0.1.0/AGENT-HOOKS-0.1.md).
 
+> **Hook-contract alignment proposal:** This draft specifies paired hook requests
+> and flat hook responses, including whole-value transforms. It does not migrate
+> the released SDKs or CTK. The generic `verdict.schema.json`, approval schemas,
+> and path-based record projection still describe the legacy contract; they are
+> not validation roots for hook responses. Approval transform specialization
+> (§9), payload-free record representation (§10.3), model-only optional metadata
+> (§4.5), and matching conformance coverage (§13.2) remain open alignment work.
+> Those seams must be resolved before claiming an end-to-end implemented contract.
+
 > **Status:** Beta · **Version:** `0.1.0-beta` · **Date:** 2026-10-02
 > **Editors:** Responsible AI / Agent Governance Toolkit
 >
@@ -50,7 +59,7 @@ lifecycle points by returning a verdict the host MUST act on). It defines:
 - the closed set of **interception points** at which a host MUST invoke registered
   interceptors,
 - the **`AgentContext`** JSON payload a host MUST construct at each interception point,
-- the **`Verdict`** JSON payload an interceptor MUST return,
+- the per-hook **response** JSON payload an interceptor MUST return,
 - the **obligations** a host MUST honour for each verdict decision,
 - the closed set of **composition profiles** by which a host combines the
   verdicts of multiple interceptors (§7),
@@ -64,9 +73,9 @@ as the Agent Control Specification (ACS).
 
 This specification is a control plane, not a telemetry plane. It does NOT
 define a passive observation, tracing, or metrics interface. Every
-registered interceptor MUST return a `Verdict`; an interceptor that has no
-control decision to make returns `allow`. Section 5.5 describes a separate
-transport envelope whose Verdict an in-process adapter extracts before returning.
+registered interceptor MUST return the response for the hook it receives; an
+interceptor that has no control decision to make returns `allow`. Section 5.5
+defines optional metadata on that flat response, not a nested verdict envelope.
 A host MAY surface `AgentContext`
 to its own telemetry, but that is outside this contract.
 
@@ -82,10 +91,10 @@ capitals.
 [Pure Specification]
 
 - **Determinism.** Given the same `AgentContext` and the same interceptor state, a
-  interceptor SHOULD return the same `Verdict`. A host MUST NOT depend on
+  interceptor SHOULD return the same hook response. A host MUST NOT depend on
   non-determinism for correctness.
 - **Fail closed.** A host that cannot construct a valid `AgentContext`, cannot
-  reach a registered interceptor, or receives an invalid `Verdict` MUST treat the
+  reach a registered interceptor, or receives an invalid hook response MUST treat the
   outcome as `deny` with a `host_error:*` reason per §11. The one opening is
   the per-binding failure posture of §6.3: an administrator can set a
   binding's `on_error` to `continue`, and only for the three interceptor
@@ -114,10 +123,10 @@ not a security certification.
   host that skips interception points, ignores verdicts, or
   misreports enforcement mode.
 - Registered interceptors are inside the host process and are fully
-  trusted by the host. They receive the raw `target` (which may
+  trusted by the host. They receive the raw hook payload (which may
   contain user PII, secrets in tool arguments, and model output) and
-  any registered interceptor MAY return `deny` or `transform` at any
-  interception point. Registering an interceptor is equivalent to
+  any registered interceptor MAY return `deny` at any interception point, or
+  `transform` at the six points permitted by §3. Registering an interceptor is equivalent to
   granting it write access to every action the agent takes.
 - The approval resolver (§9) is inside the host process and is fully
   trusted by the host.
@@ -141,11 +150,12 @@ not a security certification.
 | Term | Definition |
 | --- | --- |
 | **Host** | An agent framework, SDK, or runtime that executes an agent loop and dispatches to interceptors at each interception point. |
-| **Interceptor** | A component registered with the host that receives an `AgentContext` and returns a `Verdict`. |
+| **Interceptor** | A component registered with the host that receives a hook request and returns its matching hook response. |
 | **Interception point** | One of the eight named lifecycle positions in §3. |
 | **Agent context** | The JSON payload the host constructs at an interception point per §4. |
-| **Target** | The JSON value within the agent context that the guarded action will consume or has produced. The value a `transform` verdict rewrites. |
-| **Verdict** | The JSON payload an interceptor returns per §5. One of `allow`, `deny`, `transform`. |
+| **Transformable member** | The request member identified in §3 that a whole-value transform replaces. There is no standardized `target` request property. |
+| **Hook response** | The flat JSON object an interceptor returns per §5, containing decision fields and optional root `extensions`. |
+| **Verdict** | The decision content of a response: `allow`, `deny`, or (where permitted) `transform`, with its decision metadata. Not a nested response member. |
 | **Action** | The host operation immediately following a `pre_*` interception point or immediately preceding a `post_*` interception point (a model call, a tool invocation, emitting output). |
 | **Permit verdict** | A verdict whose `decision` is `allow` or `transform`. |
 | **Block verdict** | A verdict whose `decision` is `deny` (with or without an `approval` block). |
@@ -166,16 +176,16 @@ not a security certification.
 A host MUST emit the following eight interception points. The set is closed; a host
 MUST NOT emit an `AgentContext` whose `interception_point` is not one of these values.
 
-| `interception_point` | Position in the agent loop | Target (§4.3) | `transform` permitted |
+| `interception_point` | Position in the agent loop | Transformable request member (§4.3) | `transform` permitted |
 | --- | --- | --- | --- |
-| `agent_startup` | Once, before the first `input` of a session. | `agent_init` | no |
+| `agent_startup` | Once, before the first `input` of a session. | none | no |
 | `input` | On ingress of each external request into the session. | `input` | yes |
 | `pre_model_call` | Immediately before each model request is dispatched. | `messages` | yes |
 | `post_model_call` | Immediately after each model response is received. | `response` | yes |
 | `pre_tool_call` | Immediately before each tool invocation. | `tool_call.args` | yes |
 | `post_tool_call` | Immediately after each tool invocation completes (success or error). | `tool_result.value` | yes |
 | `output` | Immediately before the final response is returned to the caller. | `output` | yes |
-| `agent_shutdown` | Once, after the last `output` of a session or on abnormal termination. | `summary` | no |
+| `agent_shutdown` | Once, after the last `output` of a session or on abnormal termination. | none | no |
 
 ### 3.1 Ordering
 
@@ -224,7 +234,11 @@ A `AgentContext` is a JSON object. Its schema has four field tiers:
 - **namespaced** fields are extensions under `extensions.<namespace>`.
 
 The machine-readable schema is `spec/draft/schema/generated/agent-context.schema.json` with
-per-point closed schemas at `spec/draft/schema/generated/strict-contexts/<interception_point>.schema.json`.
+per-point schemas at `spec/draft/schema/generated/strict-contexts/<interception_point>.schema.json`.
+Despite the directory name, request roots are open: undeclared root members may
+validate but have no standardized semantics. Portable additions SHOULD use
+namespaced `extensions`. Neither an extra `target` property nor any other
+undeclared property selects what a transform replaces.
 
 ### 4.1 Required core
 
@@ -235,8 +249,7 @@ per-point closed schemas at `spec/draft/schema/generated/strict-contexts/<interc
   "timestamp": "2026-06-19T14:03:11.123Z",
   "sequence": 0,
   "agent":   { "id": "string", "framework": "string" },
-  "session": { "id": "string" },
-  "target": <any JSON>
+  "session": { "id": "string" }
 }
 ```
 
@@ -246,15 +259,15 @@ per-point closed schemas at `spec/draft/schema/generated/strict-contexts/<interc
 | `interception_point` | string | MUST be one of the eight values in §3. |
 | `timestamp` | string | RFC 3339 UTC instant at which the host constructed the context. |
 | `sequence` | integer ≥ 0 | MUST be strictly increasing within `session.id`. Starts at 0 on `agent_startup`. |
-| `agent.id` | string | Stable identifier for the agent definition. MUST be stable across sessions of the same agent. |
+| `agent.id` | nonempty string | Stable identifier for the agent definition. MUST be stable across sessions of the same agent. |
 | `agent.framework` | string | Lowercase identifier of the host framework, matching `^[a-z0-9_-]+$` (e.g., `langchain`, `openai-agents`, `semantic-kernel`). |
-| `session.id` | string | Stable identifier for the run/conversation. MUST be stable across all hooks in one session. |
-| `target` | any | The value-under-evaluation per §4.3. The root that `$target` in a `transform.path` resolves against. |
+| `session.id` | nonempty string | Stable identifier for the run/conversation. MUST be stable across all hooks in one session. |
 
 ### 4.2 Conditional — per-interception-point required fields
 
 A host MUST populate the following fields at the indicated interception point in
-addition to the required core. `target` MUST be set to the indicated value.
+addition to the required core. These are schematic `jsonc` examples: angle-bracket
+values and alternatives describe types rather than literal JSON values.
 
 #### `agent_startup`
 
@@ -262,8 +275,7 @@ addition to the required core. `target` MUST be set to the indicated value.
 {
   "agent_init": {
     "tools_registered": ["string", ...]
-  },
-  "target": <agent_init>
+  }
 }
 ```
 
@@ -272,10 +284,9 @@ addition to the required core. `target` MUST be set to the indicated value.
 ```jsonc
 {
   "input": {
-    "content": "string | object",
+    "content": <any JSON>,
     "role": "user" | "system" | "external"
-  },
-  "target": <input>
+  }
 }
 ```
 
@@ -284,8 +295,7 @@ addition to the required core. `target` MUST be set to the indicated value.
 ```jsonc
 {
   "model": { "id": "string" },
-  "messages": [ { "role": "string", "content": "string | object" }, ... ],
-  "target": <messages>
+  "messages": [ { "role": "string", "content": <any JSON> }, ... ]
 }
 ```
 
@@ -295,23 +305,24 @@ addition to the required core. `target` MUST be set to the indicated value.
 {
   "model": { "id": "string" },
   "response": {
-    "content": "string | object | null",
-    "tool_calls": [ { "id": "string", "name": "string", "args": {} }, ... ],
+    "content": <any JSON>,
+    "tool_calls": [ { "name": "string", "args": {} }, ... ],
     "finish_reason": "string"
-  },
-  "target": <response>
+  }
 }
 ```
 
 `response.tool_calls` MUST be present and MUST be an empty array when the model
 returned no tool calls.
+Each model-requested tool call MAY carry an `id`; it is not required in the
+model response. The subsequent tool hooks require nonempty `tool_call.id` and
+`tool_call.name`; the host must construct those before dispatch.
 
 #### `pre_tool_call`
 
 ```jsonc
 {
-  "tool_call": { "id": "string", "name": "string", "args": {} },
-  "target": <tool_call.args>
+  "tool_call": { "id": "string", "name": "string", "args": {} }
 }
 ```
 
@@ -320,8 +331,7 @@ returned no tool calls.
 ```jsonc
 {
   "tool_call": { "id": "string", "name": "string", "args": {} },
-  "tool_result": { "value": <any>, "is_error": false },
-  "target": <tool_result.value>
+  "tool_result": { "value": <any JSON>, "is_error": false }
 }
 ```
 
@@ -333,8 +343,7 @@ applied at `pre_tool_call`.
 
 ```jsonc
 {
-  "output": { "content": "string | object" },
-  "target": <output>
+  "output": { "content": <any JSON> }
 }
 ```
 
@@ -342,8 +351,7 @@ applied at `pre_tool_call`.
 
 ```jsonc
 {
-  "summary": { "reason": "completed" | "error" | "cancelled" },
-  "target": <summary>
+  "summary": { "reason": "completed" | "error" | "cancelled" }
 }
 ```
 
@@ -351,15 +359,17 @@ applied at `pre_tool_call`.
 
 [Pure Specification]
 
-`target` is the slice of the context that the guarded action will consume
-(`pre_*`, `input`) or has produced (`post_*`, `output`). It is the **only**
-value a `transform` verdict may rewrite. A host MUST set `target` to a deep
-reference (or deep copy followed by write-back) of the value indicated in the
-§3 table such that applying a `transform` to `target` is observable in the
-subsequent action.
+The heading is retained for existing section links. There is no standardized
+`target` request property. The transformable member in §3 is the slice the
+guarded action consumes (`pre_*`, `input`) or has produced (`post_*`, `output`).
+A host MUST apply a transform only to that member, per §5.2, such that the
+replacement is observable in the subsequent action or incorporation of a
+post-action result. It MUST NOT maintain a second, independently mutable copy
+under a `target` property as part of this contract.
 
 A `transform` verdict at `agent_startup` or `agent_shutdown` MUST be rejected
 by the host with `host_error:transform_target_forbidden` per §11.
+The lifecycle response schemas also exclude the `transform` decision.
 
 ### 4.4 Value domain
 
@@ -396,14 +406,22 @@ exposes the data. Absence is conformant.
 | `model.vendor`, `model.params` | `*_model_call` | string, object |
 | `request_id` | `*_model_call` | string |
 | `tools` | `pre_model_call` | array of `{name, description?, schema?}` |
-| `usage.prompt_tokens`, `usage.completion_tokens` | `post_model_call` | integer |
-| `tool_result.duration_ms` | `post_tool_call` | number |
+| `usage.prompt_tokens`, `usage.completion_tokens` | `post_model_call` | optional integer ≥ 0 counters |
+| `tool_result.duration_ms` | `post_tool_call` | number ≥ 0 |
 | `tool_call.content_hash` | `pre_tool_call` | string `sha256:<hex>`. **Host-opaque**: the preimage is host-defined, so values are comparable only within one host and carry no cross-host meaning. Portable content binding is what `context_identity` (§10) provides. |
 | `messages` | any | full message chain |
 | `trace.trace_id`, `trace.span_id` | all | W3C Trace Context hex strings |
 | `tenant.id`, `tenant.name` | all | string |
 | `actor.id`, `actor.kind` | all | string, `human`\|`service`\|`agent` |
 | `budgets.tool_call_count`, `.token_count`, `.elapsed_seconds`, `.cost_usd` | all | number |
+
+**Open schema alignment:** The point column describes the intended semantic
+scope. Current `ContextMetadata` also declares `request_id`, `usage`, and the
+other optional payload members on every hook. Thus the generated schemas permit
+them more broadly; their presence at another point does not establish a new
+correlation or usage rule. Moving `request_id` to the two model requests and
+`usage` to the post-model request remains a separate schema correction. This
+proposal does not narrow request roots or change those declarations.
 
 ### 4.6 Namespaced — extensions
 
@@ -419,6 +437,11 @@ exposes the data. Absence is conformant.
 `agent_hooks` are reserved by this specification. A host MUST pass `extensions`
 through to interceptors verbatim and MUST NOT interpret namespaces it does not
 own.
+The same namespace grammar and reservations apply to response `extensions`
+(§5.5). These are separate request and response metadata objects, not verdict
+fields. The schema encodes the namespace grammar; namespace ownership and
+reservations remain semantic requirements even where schema validation alone
+does not enforce them.
 
 ---
 
@@ -426,9 +449,27 @@ own.
 
 [Pure Specification]
 
-An interceptor MUST return a JSON object conforming to
-`spec/draft/schema/generated/verdict.schema.json`. Section 5.5 describes an optional
-transport wrapper; it does not change this in-process return contract.
+An interceptor MUST return a flat JSON object conforming to the response schema
+for the request's `interception_point`, as mapped below. Decision fields and
+optional `extensions` are siblings; there is no nested `verdict` envelope.
+The section title is retained for existing links.
+
+| Request point | Response type | Schema in `schema/generated/` |
+| --- | --- | --- |
+| `agent_startup` | `AgentStartupHookResponse` | [agent-startup-hook-response.schema.json](schema/generated/agent-startup-hook-response.schema.json) |
+| `input` | `InputHookResponse` | [input-hook-response.schema.json](schema/generated/input-hook-response.schema.json) |
+| `pre_model_call` | `PreModelHookResponse` | [pre-model-hook-response.schema.json](schema/generated/pre-model-hook-response.schema.json) |
+| `post_model_call` | `PostModelHookResponse` | [post-model-hook-response.schema.json](schema/generated/post-model-hook-response.schema.json) |
+| `pre_tool_call` | `PreToolHookResponse` | [pre-tool-hook-response.schema.json](schema/generated/pre-tool-hook-response.schema.json) |
+| `post_tool_call` | `PostToolHookResponse` | [post-tool-hook-response.schema.json](schema/generated/post-tool-hook-response.schema.json) |
+| `output` | `OutputHookResponse` | [output-hook-response.schema.json](schema/generated/output-hook-response.schema.json) |
+| `agent_shutdown` | `AgentShutdownHookResponse` | [agent-shutdown-hook-response.schema.json](schema/generated/agent-shutdown-hook-response.schema.json) |
+
+These response roots are closed. Unknown root members, the old nested envelope,
+and transforms belonging to a different hook are invalid. The generic
+`verdict.schema.json` still accepts legacy path/value transforms and is not a
+substitute for these roots. `Verdict<TTransform>` is decision-only in the schema
+source; `HooksResponse<TTransform>` intersects it with response metadata.
 
 ```jsonc
 {
@@ -437,15 +478,16 @@ transport wrapper; it does not change this in-process return contract.
   "message": "string",
   "warnings": [ { "reason": "string", "message": "string" }, ... ],
   "approval": { },
-  "transform": { "path": "$target...", "value": <any> },
+  "transform": <replacement for this hook, §5.2>,
   "evidence": { "artefact": "string", "verification_pointers": { "<k>": "uri" } },
-  "result_labels": ["string", ...]
+  "result_labels": ["string", ...],
+  "extensions": { "<namespace>": <any JSON> }
 }
 ```
 
 | Member | Required | Constraint |
 | --- | --- | --- |
-| `decision` | yes | One of the three values above. |
+| `decision` | yes | `allow` or `deny`; also `transform` at the six points permitted by §3. |
 | `reason` | no | MUST NOT start with `host_error:`. Free-form machine identifier. |
 | `message` | no | Free-form human-readable text. |
 | `warnings` | no | Array of `{reason?, message?}` objects. Permitted on any decision. A `reason` MUST NOT start with `host_warning:` (§11.1). See §5.1. |
@@ -453,6 +495,7 @@ transport wrapper; it does not change this in-process return contract.
 | `transform` | iff `decision == "transform"` | See §5.2. MUST be absent for all other decisions. |
 | `evidence` | no | See §5.3. Serialized size MUST NOT exceed 10240 bytes. |
 | `result_labels` | no | Array of strings. See §5.4. |
+| `extensions` | no | Root response metadata, separate from the verdict. See §5.5. |
 
 A host that receives a verdict that is not a JSON object, whose `decision` is
 absent or invalid, whose `reason` starts with `host_error:`, whose `transform`
@@ -466,8 +509,8 @@ whose `evidence` is not an object, or whose
 
 | Decision | Class | Semantics |
 | --- | --- | --- |
-| `allow` | permit | The action proceeds with `target` unchanged. |
-| `transform` | permit | The action proceeds with `target` rewritten per §5.2. |
+| `allow` | permit | The action proceeds with the hook payload unchanged. |
+| `transform` | permit | The action proceeds with the hook's transformable member replaced per §5.2. |
 | `deny` | block | The action MUST NOT proceed. |
 | `deny` + `approval` | block (liftable) | The action MUST NOT proceed **unless** the approval seam (§9), consulted per the composition profile (§7), resolves to a permit verdict. A host with no registered resolver enforces the deny as-is; that is conformant behaviour, not an error. |
 
@@ -497,26 +540,49 @@ unconditionally denies, consulting an approver is pointless.
 
 ### 5.2 Transform
 
-```jsonc
-{ "path": "$target.<jsonpath-segments>", "value": <any> }
+A transform carries exactly one hook-specific replacement member:
+
+| Hook | `transform` payload | Whole request member replaced |
+| --- | --- | --- |
+| `input` | `{ "input": <Input> }` | `input`, including `content` and `role` |
+| `pre_model_call` | `{ "messages": <Message[]> }` | the complete `messages` array |
+| `post_model_call` | `{ "response": <Response> }` | `response`, including `content`, `tool_calls`, and `finish_reason` |
+| `pre_tool_call` | `{ "args": <object> }` | `tool_call.args` |
+| `post_tool_call` | `{ "value": <any JSON> }` | `tool_result.value` |
+| `output` | `{ "output": <Output> }` | `output`, including `content` |
+
+The replacement types are the corresponding request member types in §4. For
+example, this is a complete `pre_tool_call` response, not a patch:
+
+```json
+{
+  "decision": "transform",
+  "transform": { "args": { "query": "redacted" } }
+}
 ```
 
-- `path` MUST be rooted at `$target`. For backward compatibility with ACS
-  v0.3.x, a host MUST also accept the deprecated alias `$policy_target` and
-  treat it as `$target`. The alias is removed in agent-hooks v0.3.
-- `path` segments follow the subset of JSONPath defined in
-  `spec/draft/schema/path-grammar.abnf`: dot-member (`.foo`), bracket-index (`[0]`),
-  and bracket-member (`["foo"]`) only.
-- `value` is any JSON value, including `null`. An absent `value`
-  member is equivalent to `null` (the §10.3 record projection and SDK
-  marshalling layers omit null values, so the two forms MUST agree).
-- A host MUST resolve `path` against the context's `target` value and replace
-  the addressed location with `value`. The replacement MUST NOT modify any
-  other part of the `AgentContext`.
-- A `path` rooted elsewhere than `$target`/`$policy_target` MUST yield
-  `host_error:transform_target_forbidden`.
-- A `path` that does not resolve, or whose segment types are incompatible with
-  `target`'s structure, MUST yield `host_error:transform_invalid`.
+- A host MUST replace the entire indicated member atomically. It MUST NOT merge
+  objects, append messages, interpret paths, or treat omitted nested properties
+  as instructions to preserve existing values.
+- The replacement MUST satisfy the corresponding request member's type and §4.4
+  value domain. Every required replacement member MUST be present. In particular,
+  `post_tool_call` permits an explicit `"value": null`, but absence of `value`
+  is invalid, not a synonym for null.
+- A replacement MUST NOT modify other context members. Replacing args preserves
+  `tool_call.id` and `name`; replacing a result value preserves `is_error` and
+  optional `duration_ms`. A model-response replacement includes its whole tool
+  call list, even when empty.
+- Shape/type failures at the response gate yield `host_error:verdict_invalid`
+  per §6.3. A schema-valid replacement the host cannot apply yields
+  `host_error:transform_invalid`. A lifecycle transform is forbidden per §4.3;
+  that prohibition remains fail closed regardless of `on_error` (§6.3.1).
+
+**Legacy seam (informative):** `Transform` in the generic verdict and approval
+schemas still has `{path, value?}`, with `$target` / `$policy_target` roots and
+the grammar in [path-grammar.abnf](schema/path-grammar.abnf). That is not the
+hook response contract. This proposal neither removes those legacy artifacts
+nor defines an automatic path-to-whole-value conversion. Approval and record
+migration remain open in §9 and §10.3.
 
 ### 5.3 Evidence
 
@@ -535,42 +601,37 @@ through, itself bounded.
 ### 5.4 Result labels
 
 `result_labels` is the interceptor's return channel for label-flow tracking. A
-host MUST persist `result_labels` alongside the data the interception point's `target`
+host MUST persist `result_labels` alongside the data the interception point's payload
 produced (a tool result, a model output, a final output) and SHOULD resurface
 them as `extensions.<interceptor-namespace>.source_labels` on later hooks whose
-`target` derives from that data. A host MUST NOT persist `result_labels` for an
+payload derives from that data. A host MUST NOT persist `result_labels` for an
 action that did not proceed (a `deny` that was not lifted).
 
 ### 5.5 Transport response envelope
 
-> Adopted under P-006 on 2026-10-15 as part of the 0.1 contract.
-
 [Pure Specification]
 
-The canonical in-process interceptor return remains a §5 `Verdict`.
-A hosted or cross-process interceptor transport MAY return an
-`InterceptorResponse` envelope when it needs to carry response data
-alongside the control decision:
+The heading is retained for existing links. The draft supersedes the nested
+transport envelope adopted under P-006 with the flat per-hook response in §5.
+The historical proposal and released contract are not changed. The same flat
+shape applies in-process and across a hosted or cross-process transport:
 
-```jsonc
+```json
 {
-  "verdict": <canonical Verdict>,
-  "extensions": {                       // optional
-    "<namespace>": <any JSON>
+  "decision": "allow",
+  "extensions": {
+    "provider": { "receipt": "opaque-provider-receipt" }
   }
 }
 ```
 
-The machine-readable schema is
-`spec/draft/schema/generated/interceptor-response.schema.json`. The envelope root is
-closed: only `verdict` and `extensions` are permitted.
-`verdict` is REQUIRED and MUST pass every §5 rule. `extensions`, when
-present, MUST be a JSON object and uses the
+There is no draft `interceptor-response.schema.json`; select the matching hook
+response root in §5. `extensions`, when present, MUST be a JSON object and uses the
 §4.6 namespace grammar and reservations (`acs`, `ctk`, `agent_hooks`).
 Providers MUST NOT
 use those namespaces for provider-specific data.
 When the response is received as JSON text, a duplicate member at any
-object level of the text, including inside `verdict` and
+object level of the text, including inside decision fields and
 `extensions`, is invalid. An already-parsed value cannot expose duplicates
 that its receiving parser has collapsed.
 
@@ -579,7 +640,7 @@ The UTF-8 byte length of the RFC 8785 canonical form of the complete
 and data across all providers. An absent member contributes zero;
 an explicitly present empty object contributes
 two bytes. This bound is independent of the §5.3 evidence cap of 10240
-bytes; neither bound includes the other field. SDK response parsers
+bytes; neither bound includes the other field. Response parsers MUST
 enforce this bound; JSON Schema cannot express canonical byte length.
 
 Extension data MUST satisfy the §4.4 I-JSON domain.
@@ -591,33 +652,29 @@ Receipts are provider data carried under `extensions.<provider>.receipt`,
 not a dedicated root member. Distinct provider namespaces prevent
 collisions and identify each field's producer; clients locating a receipt
 must know its provider's namespace.
-The envelope carries no version of its own: it uses the Agent Hooks
+The response carries no version of its own: it uses the Agent Hooks
 wire version selected by the transport or evaluated `AgentContext.spec`.
 Provider receipt contracts may have their own versions.
 
-Only the nested `verdict` participates in §6–§9 enforcement and
+Only the decision fields participate in §6–§9 enforcement and
 composition. A receipt or extension cannot alter the decision,
-approval, transform, warnings, evidence, or result labels. A transport
-selects the response gate through its documented API contract or adapter
-configuration; the in-process interceptor signature does not select it.
-A host using that gate MUST treat a malformed envelope as
+approval, transform, warnings, evidence, or result labels. Response extensions
+are not unioned by composition and MUST NOT influence winner selection.
+A host MUST treat malformed response metadata as
 `{"decision": "deny", "reason": "host_error:verdict_invalid"}` per §6.3,
-even when its nested Verdict would be valid in isolation.
+even when its decision fields would be valid in isolation.
 
-SDKs expose two distinct gates:
-
-- the strict Verdict gate accepts only a §5 Verdict and continues to
-  reject an envelope;
-- the interceptor-response gate accepts either a bare §5 Verdict or
-  the envelope, normalizing a bare Verdict to
-  `{ "verdict": <that Verdict> }`.
-
-The in-process adapter extracts the normalized `verdict` before
-returning to the host emitter. Agent Hooks does not interpret or
+Agent Hooks does not interpret or
 persist `extensions`, and they are not added to the
 payload-free §10.3 `InterceptionRecord`. Providers MAY define a
 stricter receipt schema and binding/signature rules outside this
 specification.
+
+**SDK migration (informative):** Existing released SDK strict-verdict and
+envelope-normalization gates have not been migrated by this proposal. An
+adapter supporting an older transport must document that compatibility
+boundary; accepting an old envelope is not validation of a draft hook response.
+No new compatibility adapter or SDK API is specified here.
 
 ---
 
@@ -630,8 +687,8 @@ mode (§8):
 
 | Combined verdict | Host MUST |
 | --- | --- |
-| `allow` | Proceed with the action using `target` unchanged. Record any warnings. |
-| `transform` | Apply the transform to `target` per §5.2 (if not already applied during sequential fold-through, §7.4), then proceed with the action using the transformed value. |
+| `allow` | Proceed with the action using the hook payload unchanged. Record any warnings. |
+| `transform` | Replace the hook's transformable member per §5.2 (if not already applied during sequential fold-through, §7.4), then proceed with the action using the replacement. |
 | `deny` | NOT proceed with the action. At `pre_*` hooks the guarded call MUST NOT be dispatched. At `input` the turn MUST NOT begin. At `output` the response MUST NOT be returned to the caller. This applies equally to a liftable deny that the approval seam did not lift (rejected, unresolved, or never consulted). |
 
 ### 6.1 Post-action block semantics
@@ -677,7 +734,7 @@ dispatching to any interceptor. Interceptor failures map one-to-one:
 | --- | --- |
 | The interceptor raises (or panics) | `deny` `host_error:interceptor_failed` |
 | The interceptor exceeds the host's timeout | `deny` `host_error:interceptor_timeout` |
-| The returned value fails §5 validation (or §5.5 validation when the response gate is selected) | `deny` `host_error:verdict_invalid` |
+| The returned value fails its per-hook response schema or the semantic rules in §5, including §5.5 | `deny` `host_error:verdict_invalid` |
 
 The substituted deny takes the failing interceptor's **slot**: it
 occupies that interceptor's position in the profile's composition
@@ -686,7 +743,7 @@ and carries that index as `decided_by` when it wins (§10.3). In
 `sequential/run_all` and the parallel profiles, other interceptors'
 verdicts are unaffected — a single failure does not abort the
 emission, it composes as a deny. Host-synthesized messages MUST NOT
-include target-derived content (§14): an exception type name is
+include payload-derived content (§14): an exception type name is
 acceptable, an exception string is not.
 
 #### 6.3.1 Failure posture: `on_error`
@@ -719,6 +776,13 @@ following stay fail closed with no knob, whatever `on_error` says:
 - an emission with nothing bound (`host_error:no_interceptor`, §7);
 - an explicit `deny` an interceptor returned, liftable or not.
 
+The lifecycle transform prohibition in §4.3 takes precedence over the generic
+invalid-response substitution: a returned `decision: "transform"` at startup or
+shutdown yields `host_error:transform_target_forbidden` and never continues.
+Other wrong-hook or malformed replacement payloads fail the response gate as
+`host_error:verdict_invalid`; application failures after that gate remain
+non-substitutable `host_error:transform_invalid`.
+
 Under `on_error: continue`, when one of the three covered failures
 occurs, the host MUST substitute the following verdict in the failing
 registration's slot instead of the deny from the table:
@@ -742,7 +806,7 @@ where `<host_error reason>` is the reason the table would have given
 §10.3; a registration with no name uses the label `interceptor-<index>`,
 where `<index>` is its registration index written as a decimal integer.
 The message carries nothing else: no exception
-string, no target content. The substituted allow:
+string, no payload content. The substituted allow:
 
 - is an `allow` for every profile's purposes: it does not
   short-circuit `sequential/first_deny`, it counts as an `allow` under
@@ -752,7 +816,7 @@ string, no target content. The substituted allow:
   record's `verdicts` summary, exactly as the substituted deny does;
 - is a returned verdict for the §7.3 union, so its warning joins the
   combined verdict's `warnings`; it contributes no `result_labels`;
-- leaves `target` unchanged;
+- leaves the hook payload unchanged;
 - never wins on its own: it is the lowest severity, so when every
   other verdict is also an allow the combined verdict is an allow with
   `decided_by: null` (§10.3). The audit handle for a continuation is
@@ -787,7 +851,9 @@ instead of it.
 
 [Pure Specification]
 
-An interceptor is a callable `intercept(context: AgentContext) -> Verdict`. A host:
+An interceptor is a callable receiving one hook request and returning its
+matching §5 response. Dispatch and validation MUST use the request's
+`interception_point`, not a caller-selected generic verdict schema. A host:
 
 - MUST NOT begin the guarded action until composition (per the declared
   profile, §7.2) is complete and the combined verdict permits it.
@@ -803,7 +869,7 @@ An interceptor is a callable `intercept(context: AgentContext) -> Verdict`. A ho
 
 A registered interceptor can use a remote service to compute its
 verdict. The in-process callable remains the trusted interceptor (§1.4)
-and returns a §5 `Verdict` for the context it received. Delegating
+and returns the §5 hook response for the context it received. Delegating
 computation does not transfer the host's composition or enforcement
 obligations. The failure rules in §6.3 and timeout guidance above still
 apply. Transport selection, service authentication, and protection of
@@ -813,8 +879,8 @@ context data sent to the service are host concerns (§1.4, §14).
 wraps the interceptor call in its own timer and applies §6.3 on
 breach. An interceptor that runs external work (a child process, an
 HTTP call) MAY own the deadline instead. Such a **managed
-interceptor** returns a typed outcome rather than a bare `Verdict`:
-one of `verdict` (carrying a §5 `Verdict`), `timeout`, `cancelled` or
+interceptor** returns a typed outcome rather than a bare hook response:
+one of `verdict` (carrying the matching §5 response), `timeout`, `cancelled` or
 `failed`. The SDK emitter provides this outcome type and a
 registration path for it. A managed interceptor:
 
@@ -834,15 +900,25 @@ as any returned value does; `timeout` is the timeout failure of §6.3
 and follows the registration's `on_error`; `failed` is the raise
 failure of §6.3 and follows `on_error`; `cancelled` is
 `deny host_error:interceptor_failed` and never continues (§6.3.1). A
-host MUST NOT infer a timeout from an ordinary `Verdict` or from a
+host MUST NOT infer a timeout from an ordinary hook response or from a
 cancellation, and MUST NOT treat a `timeout` reported without cleanup
 as conformant.
+
+*Informative type mapping.* The draft schema source exposes eight synchronous
+handler aliases in [hook-responses.ts](schema/src/hook-responses.ts):
+`AgentStartupHookHandler`, `InputHookHandler`, `PreModelHookHandler`,
+`PostModelHookHandler`, `PreToolHookHandler`, `PostToolHookHandler`,
+`OutputHookHandler`, and `AgentShutdownHookHandler`. Each pairs its request with
+the corresponding response in §5 through `HookHandler<TRequest, TResponse>`.
+These TypeScript aliases do not change released SDK registration or managed
+outcome APIs. The normative requirement is the JSON pairing, not a particular
+language callable signature.
 
 ### 7.1 Composition is host configuration
 
 How multiple interceptors compose at one emission is a **host
 configuration choice**, never something a returned verdict can
-influence. A verdict carries the interceptor's decision content only;
+influence. Response extensions are non-enforcement metadata (§5.5);
 the host declares — before dispatch — which profile governs execution
 and aggregation. The profile in effect MUST be recorded on every
 interception record (§10.3) so records are interpretable without
@@ -922,8 +998,8 @@ Aggregation selects **one winning verdict** and unions the metadata:
 ### 7.4 Sequential profiles
 
 Interceptors are invoked in registration order. When an interceptor
-returns `transform` in `enforce` mode, the host MUST apply it to
-`target` (per §5.2, including the §4.3 write-back) **before** invoking
+returns `transform` in `enforce` mode, the host MUST replace the hook's
+transformable member (per §5.2 and §4.3) **before** invoking
 the next interceptor, so each interceptor observes the context as
 already transformed by its predecessors. In `evaluate_only` mode the
 transform is validated but not applied (§8), so later interceptors
@@ -1036,6 +1112,12 @@ remains the index of the interceptor whose liftable deny was consulted
 the substitution. A §6.3.1 substitution is a different thing and is
 recorded by `substituted_for` on the slot's `verdicts` entry;
 `resolved_by` is unaffected by it.
+
+The rules in §7.4–§7.6 that describe an approval returning a transform retain
+the existing composition intent, but do not resolve the approval wire-type
+seam in §9. They are not authorization to apply a legacy path/value transform
+as a hook response. The hook-aware approval representation and validation must
+be settled together before exercising those branches against this draft.
 
 ### 7.7 Host declaration document
 
@@ -1459,6 +1541,19 @@ A host MUST support two modes, selected per session or per interception point:
 
 [Pure Specification]
 
+**Open approval alignment:** The current [approval source](schema/src/approval.ts)
+and [generated schema](schema/generated/approval.schema.json) still embed the
+legacy generic `TransformVerdict`; they do not carry the hook-specific §5.2
+replacement type. The flow, echo rule, fail-closed behavior, and allow/deny
+outcomes below are retained. The transform resolution branch is an unresolved
+draft seam, not an implemented hook-typed approval contract. The proposed
+direction is to pair approved replacements with the request hook and prohibit
+lifecycle replacements, but choosing concrete approval roots or another
+representation, and their validation order, requires separate schema work.
+This proposal neither changes that schema nor specifies a conversion from
+legacy paths. In particular, generic approval-schema acceptance is not evidence
+that a resolution is valid for a hook or allowed at startup.
+
 The approval seam is how a **liftable deny** (§5.1) may be lifted. The
 host consults a registered **approval resolver** exactly when the
 composition profile in effect says to (§7.4–§7.6), and never at
@@ -1470,7 +1565,7 @@ composition profile in effect says to (§7.4–§7.6), and never at
   "context_identity": "<string per §10.1>" | null,
   "interception_point": "<§3>",
   "verdict": <the liftable deny Verdict>,
-  "context": <the AgentContext>            // MAY be redacted per host policy
+  "context": <the AgentContext>            // optional; MAY be redacted per host policy
 }
 
 // ApprovalResolution
@@ -1503,13 +1598,17 @@ composition profile in effect says to (§7.4–§7.6), and never at
   2. `outcome` is one of the three values, and `verdict` is present
      exactly when `outcome != "unresolved"` →
      `host_error:approval_resolver_failed`;
-  3. the carried `verdict` passes §5 validation →
+  3. the carried `verdict` passes decision validation →
      `host_error:verdict_invalid`;
   4. outcome/verdict consistency (`approve` carries a permit,
      `reject` carries a deny) → `host_error:verdict_invalid`.
 
   The order is normative so that independently implemented hosts
   report the same reason for the same malformed resolution.
+  In the legacy approval artifact, step 3 validates the generic verdict;
+  that check does not validate §5.2 replacements. Hook-specific transform
+  validation remains part of the open alignment above. Response `extensions`
+  are not copied into an approval verdict merely because the response carries them.
 
 The `context_identity` presented in the request is computed by the
 identity provider from the context **as presented to the resolver** —
@@ -1533,8 +1632,12 @@ Rules:
   they bind the enforcement path, not the approval egress;
 - a redactor that raises or panics fails the consultation closed as
   `deny host_error:approval_resolver_failed`;
-- hosts SHOULD document removed content under the reserved
-  `extensions.<host>.redacted` shape: an array of §5.2 path strings.
+- hosts SHOULD document removed content under
+  `extensions.<host>.redacted`: an array of strings identifying removed
+  request fields. The host MUST document the path notation it uses; this
+  proposal does not choose a new redaction-path grammar. These descriptions
+  are metadata, not executable transform selectors. `<host>` must be a
+  namespace the host owns under §4.6, not a reserved namespace it does not own.
 
 ---
 
@@ -1613,6 +1716,22 @@ where:
   or `tool_call.content_hash` — are excluded, so adding optional data
   never perturbs the identity.
 
+The required root projection is exactly `spec`, `interception_point`,
+`timestamp`, `sequence`, `agent`, `session`, plus that point's required
+payloads from §4.2 (including `model` at model hooks and `tool_call` at both
+tool hooks). There is no `target` member in this projection. Open-root extras,
+request `extensions`, `request_id`, and `usage` are excluded; response metadata
+is never part of a context identity. Within each `response.tool_calls` entry,
+`name` and `args` are required and optional `id` is excluded. JSON-valued
+content and args retain their contents; the projection does not strip arbitrary
+application members inside them.
+
+**Identity implementation alignment:** The existing golden vectors and released
+providers are not revised here. Their projection and optional model tool-call ID
+handling must be checked against this exact required-member set before they
+can attest this draft. Removing a previously hashed synthetic `target` or
+optional ID can change hashes; this proposal makes no compatibility claim.
+
 **Input domain (fail closed, never normalize).** RFC 8785 defines
 canonical bytes only for I-JSON ([RFC 7493]) data. The provider MUST
 reject — as `deny` with `host_error:context_invalid` and a
@@ -1642,9 +1761,8 @@ verdict, never a plausible one.
 ### 10.3 The interception record
 
 A host MUST produce one **InterceptionRecord** per emission. The record
-is payload-free: it carries no context or target content. Because the
-combined verdict itself can carry target content (a `transform.value`
-is by definition a replacement for part of the target), the record
+is payload-free: it carries no context or replacement payload. Because the
+combined verdict itself can carry replacement content, the record
 MUST carry the **payload-free projection** of the combined verdict,
 not the verdict verbatim:
 
@@ -1655,11 +1773,26 @@ not the verdict verbatim:
   truncated);
 - `approval` presence is kept but its members are stripped (an empty
   object);
-- `transform.path` is kept; `transform.value` is DROPPED;
+- every §5.2 replacement payload is DROPPED, including nested input, messages,
+  response, args, result value, and output content;
 - `evidence` is kept — it is an opaque offline pointer by design
   (§5.3) and is bounded by the §5.3 size cap.
 
-The projection guarantees: a record never contains target-derived
+**Open record alignment:** The legacy
+[record schema](schema/generated/interception-record.schema.json) still
+requires `transform.path` when `transform` is present; its old projection keeps
+that path and drops `transform.value`. New hook transforms have no such path.
+The exact replacement-free representation (for example decision alone,
+transform-presence, or a fixed affected-member identifier) is deliberately not
+selected here. Do not copy replacement contents or fabricate a legacy path to
+make the record validate. The source `VerdictProjection` also only declares
+`transform` and `approval`, rather than the full decision metadata listed above;
+that pre-existing mismatch needs alignment at the same time. The record
+skeleton and retained field rules below express the audit requirements, not
+proof that the current generated record schema represents hook transforms.
+No new transform record example is asserted conformant by this proposal.
+
+The privacy requirement is that a record never contains payload-derived
 content beyond what an interceptor deliberately placed in a bounded
 `reason`/truncated `message`, and its size is bounded by the §5.3
 evidence cap plus fixed-size members. The full combined verdict
@@ -1765,9 +1898,9 @@ projection failure). An interceptor MUST NOT emit a
 | `host_error:context_invalid` | The host could not construct a schema-valid `AgentContext`, or the `jcs-sha256` provider rejected its value domain (§10.2). |
 | `host_error:interceptor_failed` | An interceptor raised or returned a non-JSON value. |
 | `host_error:interceptor_timeout` | An interceptor exceeded the host's timeout. |
-| `host_error:verdict_invalid` | An interceptor returned a value that fails §5 validation, or a transport response fails §5.5 envelope validation. |
-| `host_error:transform_invalid` | `transform.path` did not resolve or `value` could not be set. |
-| `host_error:transform_target_forbidden` | `transform.path` is not rooted at `$target`, or the interception point forbids transform. |
+| `host_error:verdict_invalid` | An interceptor returned a value that fails the matching hook response schema or §5 semantic rules, including flat response metadata (§5.5). |
+| `host_error:transform_invalid` | A validated whole-member replacement could not be applied (§5.2). |
+| `host_error:transform_target_forbidden` | The interception point forbids transform (§4.3). |
 | `host_error:transform_conflict` | Two or more transforms against the same snapshot in a parallel profile (§7.5). |
 | `host_error:composition_disagreement` | Non-unanimous outcome under `parallel/unanimous` (§7.5). |
 | `host_error:approval_resolver_failed` | The resolver raised or timed out. |
@@ -1783,6 +1916,9 @@ Removed relative to earlier drafts: `host_error:approval_resolver_missing`
 `approval_identity_mismatch`).
 
 The machine-readable inventory is `spec/draft/reserved-reasons.json`.
+Its reason identifiers are unchanged. Its cause descriptions still refer to
+the legacy path/envelope contract and need a coordinated follow-up with the
+validators and vectors; they do not establish path semantics for §5.2.
 
 ### 11.1 Reserved warnings
 
@@ -1923,7 +2059,7 @@ tools concurrently. The contract is per tool call, not per batch:
 
 [Default Implementation]
 
-`target`, `messages`, and tool results carry untrusted model/tool
+Hook input/output content, `messages`, and tool results carry untrusted model/tool
 output, and each emission canonicalizes, hashes, and deep-copies them
 per interceptor. Hosts SHOULD bound both dimensions before emission and
 fail closed (`host_error:context_invalid`) on breach:
@@ -2007,6 +2143,25 @@ carry the profile/knobs they apply to. The golden identity vectors
 apply only when the declared provider is `jcs-sha256`. Per-language CTK
 runners are provided under `sdk/<lang>/`.
 
+**Draft coverage still required:** The checked-in CTK, harness APIs, and golden
+vectors remain on the released contract; passing them does not by itself
+establish conformance to this hook-contract proposal. Draft response validation
+must dispatch by `interception_point` to the eight roots in §5, not the generic
+verdict or the removed transport envelope. Coverage must exercise all six
+whole-member replacements, required replacement members (including explicit
+null versus absent result value), wrong-hook transforms, both lifecycle
+prohibitions, flat response extensions and their non-enforcement semantics,
+namespace reservations, byte caps, duplicate-member rejection, and nested
+envelope rejection. Sequential fold-through, parallel conflict handling,
+`evaluate_only`, and identity projection must be tested using these payloads.
+
+The existing draft schema-example checker covers several shape cases, but
+schema tests do not prove host application, semantic metadata rules, or CTK
+coverage. Approval-transform and record-projection vectors must follow the
+decisions in §9 and §10.3 rather than silently accepting legacy artifacts as
+hook-typed ones. No new conformance claim or SDK migration is made by this
+prose update.
+
 ### 13.3 Claims
 
 A conformance claim is the tuple
@@ -2043,16 +2198,20 @@ not a certification. The companion threat model with
 threat→mitigation→test traceability is `docs/THREAT-MODEL.md`.
 
 
-- An interceptor receives the full `target`, which may contain user PII, secrets in
+- An interceptor receives the full hook request, which may contain user PII, secrets in
   tool arguments, or model output. Hosts SHOULD redact known-sensitive fields
   before constructing `AgentContext` when the interceptor's trust level does not
   warrant raw access, and SHOULD document any redaction in
-  `extensions.<host>.redacted: ["<jsonpath>", ...]` — an array of §5.2
-  path strings (the same reserved shape the §9 approval redactor
-  uses).
+  `extensions.<host>.redacted: ["<field-path>", ...]`, using the host-documented
+  notation described in §9. These redaction descriptions do not select
+  transform locations; transforms replace only the member fixed by the hook.
 - `evidence.verification_pointers` are URIs a host MUST NOT dereference
   automatically; doing so is an SSRF vector.
-- A `transform` verdict rewrites data the agent will act on. Hosts SHOULD
+- A `transform` verdict replaces a complete hook member the agent will act on.
+  Replacement payloads may contain secrets and MUST NOT be copied into
+  interception records (§10.3); response extensions are also excluded from
+  those records (§5.5).
+  Hosts SHOULD
   authenticate interceptors and SHOULD log every applied transform with both
   `input_identity` and `enforced_identity`.
 - Composition profiles change which controls observe which content. In
