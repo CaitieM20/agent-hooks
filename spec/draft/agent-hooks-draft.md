@@ -1,21 +1,10 @@
 # Agent Hooks Specification — Version 0.1
 
 > **Draft:** This is the working draft for the next specification release.
-> It is not a released specification. The latest released specification is
-> [0.1.0](../0.1.0/AGENT-HOOKS-0.1.md).
+> It is not a released specification. 
 
-> **Hook-contract alignment proposal:** This draft specifies paired hook requests
-> and flat hook responses, including whole-value transforms. It does not migrate
-> the released SDKs or CTK. `verdict.schema.json` now describes the union of
-> hook-specific transforms, but only the per-hook response roots select the
-> transform valid for a particular request. Approval resolutions permit only
-> allow/deny, and the interception-record schema omits transform payloads.
-> Model-only optional metadata (§4.5), consistent runtime/CTK coverage (§13.2),
-> and validation of the prose semantics remain follow-up work; no end-to-end
-> implementation claim is made here.
-
-> **Status:** Beta · **Version:** `0.1.0-beta` · **Date:** 2026-10-02
-> **Editors:** Responsible AI / Agent Governance Toolkit
+> **Status:** Beta · **Version:** `draft`
+> **Editors:** Responsible AI 
 >
 > This document defines a framework-neutral contract for **lifecycle hooks** in
 > AI agent systems: a fixed set of interception points, the context payload a host
@@ -59,8 +48,8 @@ lifecycle points by returning a verdict the host MUST act on). It defines:
 
 - the closed set of **interception points** at which a host MUST invoke registered
   interceptors,
-- the **`AgentContext`** JSON payload a host MUST construct at each interception point,
-- the per-hook **response** JSON payload an interceptor MUST return,
+- the **`HooksRequest`** JSON payload a host MUST construct at each interception point. Each interception point has a corresponding request shape.
+- the **`HooksResponse`** JSON payload an interceptor MUST return. Each interception point has a corresponding response shape.
 - the **obligations** a host MUST honour for each verdict decision,
 - the closed set of **composition profiles** by which a host combines the
   verdicts of multiple interceptors (§7),
@@ -74,10 +63,10 @@ as the Agent Control Specification (ACS).
 
 This specification is a control plane, not a telemetry plane. It does NOT
 define a passive observation, tracing, or metrics interface. Every
-registered interceptor MUST return the response for the hook it receives; an
+registered interceptor MUST compute a `Verdict` and return it as part of the `HooksResponse`; an
 interceptor that has no control decision to make returns `allow`. Section 5.5
 defines optional metadata on that flat response, not a nested verdict envelope.
-A host MAY surface `AgentContext`
+A host MAY surface `HooksRequest`
 to its own telemetry, but that is outside this contract.
 
 ### 1.2 Key words
@@ -91,11 +80,11 @@ capitals.
 
 [Pure Specification]
 
-- **Determinism.** Given the same `AgentContext` and the same interceptor state, a
-  interceptor SHOULD return the same hook response. A host MUST NOT depend on
+- **Determinism.** Given the same `HooksRequest` and the same interceptor state, a
+  interceptor SHOULD return the same `HooksResponse`. A host MUST NOT depend on
   non-determinism for correctness.
-- **Fail closed.** A host that cannot construct a valid `AgentContext`, cannot
-  reach a registered interceptor, or receives an invalid hook response MUST treat the
+- **Fail closed.** A host that cannot construct a valid `HooksRequest`, cannot
+  reach a registered interceptor, or receives an invalid `HooksResponse` MUST treat the
   outcome as `deny` with a `host_error:*` reason per §11. The one opening is
   the per-binding failure posture of §6.3: an administrator can set a
   binding's `on_error` to `continue`, and only for the three interceptor
@@ -124,7 +113,7 @@ not a security certification.
   host that skips interception points, ignores verdicts, or
   misreports enforcement mode.
 - Registered interceptors are inside the host process and are fully
-  trusted by the host. They receive the raw hook payload (which may
+  trusted by the host. They receive the `HooksRequest` payload (which may
   contain user PII, secrets in tool arguments, and model output) and
   any registered interceptor MAY return `deny` at any interception point, or
   `transform` at the six points permitted by §3. Registering an interceptor is equivalent to
@@ -151,12 +140,11 @@ not a security certification.
 | Term | Definition |
 | --- | --- |
 | **Host** | An agent framework, SDK, or runtime that executes an agent loop and dispatches to interceptors at each interception point. |
-| **Interceptor** | A component registered with the host that receives a hook request and returns its matching hook response. |
+| **Interceptor** | A component registered with the host that receives a `HooksRequest` and returns its matching `HooksResponse`. |
 | **Interception point** | One of the eight named lifecycle positions in §3. |
-| **Agent context** | The JSON payload the host constructs at an interception point per §4. |
-| **Transformable member** | The request member identified in §3 that a whole-value transform replaces. There is no standardized `target` request property. |
-| **Hook response** | The flat JSON object an interceptor returns per §5, containing decision fields and optional root `extensions`. |
-| **Verdict** | The decision content of a response: `allow`, `deny`, or (where permitted) `transform`, with its decision metadata. Not a nested response member. |
+| **`HooksRequest`** | The JSON payload the host constructs at an interception point per §4. |
+|| **`HooksResponse`** | The JSON object an interceptor returns per §5, containing decision fields and optional root `extensions`. |
+| **Verdict** | The decision content of a `HooksResponse`: `allow`, `deny`, or (where permitted) `transform`, with its decision metadata.|
 | **Action** | The host operation immediately following a `pre_*` interception point or immediately preceding a `post_*` interception point (a model call, a tool invocation, emitting output). |
 | **Permit verdict** | A verdict whose `decision` is `allow` or `transform`. |
 | **Block verdict** | A verdict whose `decision` is `deny` (with or without an `approval` block). |
@@ -174,8 +162,7 @@ not a security certification.
 
 [Pure Specification]
 
-A host MUST emit the following eight interception points. The set is closed; a host
-MUST NOT emit an `AgentContext` whose `interception_point` is not one of these values.
+A host MUST emit the following eight interception points. The set is closed;
 
 | `interception_point` | Position in the agent loop | Transformable request member (§4.3) | `transform` permitted |
 | --- | --- | --- | --- |
@@ -223,14 +210,13 @@ capabilities to the CTK per §13.2 and MUST still emit `agent_startup`, `input`,
 
 ---
 
-## 4. Agent context
+## 4. Hooks Request
 
 [Pure Specification]
 
-A `AgentContext` is a JSON object. Its schema has four field tiers:
+A `HooksRequest` is a JSON object. Its schema has four field tiers:
 
 - **required** fields are REQUIRED at every interception point.
-- **conditional** fields are REQUIRED at the specific interception point(s) listed.
 - **optional** fields are well-known and OPTIONAL.
 - **namespaced** fields are extensions under `extensions.<namespace>`.
 
@@ -242,11 +228,12 @@ namespaced `extensions`. Neither an extra `target` property nor any other
 undeclared property selects what a transform replaces.
 
 ### 4.1 Required core
+Every `HooksRequest` MUST Contain the following required core fields:
 
 ```jsonc
 {
   "spec": "agent-hooks/0.1",
-  "interception_point": "<one of §3>",
+  "interception_point": "<one of §3>",  
   "timestamp": "2026-06-19T14:03:11.123Z",
   "sequence": 0,
   "agent":   { "id": "string", "framework": "string" },
@@ -264,11 +251,9 @@ undeclared property selects what a transform replaces.
 | `agent.framework` | string | Lowercase identifier of the host framework, matching `^[a-z0-9_-]+$` (e.g., `langchain`, `openai-agents`, `semantic-kernel`). |
 | `session.id` | nonempty string | Stable identifier for the run/conversation. MUST be stable across all hooks in one session. |
 
-### 4.2 Conditional — per-interception-point required fields
+### 4.2 Per Hook Fields
 
-A host MUST populate the following fields at the indicated interception point in
-addition to the required core. These are schematic `jsonc` examples: angle-bracket
-values and alternatives describe types rather than literal JSON values.
+Each `interception_point` has its own required fields. A host MUST populate the following fields in addition to the required core. 
 
 #### `agent_startup`
 
@@ -280,6 +265,10 @@ values and alternatives describe types rather than literal JSON values.
 }
 ```
 
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `agent_init.tools_registered` | array of strings | List of tools registered for the agent. |
+
 #### `input`
 
 ```jsonc
@@ -290,6 +279,10 @@ values and alternatives describe types rather than literal JSON values.
   }
 }
 ```
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `input.content` | any JSON | Content of the input. |
+| `input.role` | string | MUST be one of `user`, `system`, or `external`. |
 
 #### `pre_model_call`
 
@@ -299,6 +292,11 @@ values and alternatives describe types rather than literal JSON values.
   "messages": [ { "role": "string", "content": <any JSON> }, ... ]
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `model.id` | string | Identifier of the model. |
+| `messages` | array of objects | Messages sent to the model. |
 
 #### `post_model_call`
 
@@ -312,6 +310,13 @@ values and alternatives describe types rather than literal JSON values.
   }
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `model.id` | string | Identifier of the model. |
+| `response.content` | any JSON | Content of the model response. |
+| `response.tool_calls` | array of objects | Tool calls requested by the model. MUST be present and MUST be an empty array when the model returned no tool calls. |
+| `response.finish_reason` | string | Reason the model finished. |
 
 `response.tool_calls` MUST be present and MUST be an empty array when the model
 returned no tool calls.
@@ -327,6 +332,12 @@ model response. The subsequent tool hooks require nonempty `tool_call.id` and
 }
 ```
 
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `tool_call.id` | string | Identifier of the tool call. |
+| `tool_call.name` | string | Name of the tool. |
+| `tool_call.args` | object | Arguments passed to the tool. | 
+
 #### `post_tool_call`
 
 ```jsonc
@@ -335,6 +346,14 @@ model response. The subsequent tool hooks require nonempty `tool_call.id` and
   "tool_result": { "value": <any JSON>, "is_error": false }
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `tool_call.id` | string | Identifier of the tool call. |
+| `tool_call.name` | string | Name of the tool. |
+| `tool_call.args` | object | Arguments passed to the tool. |
+| `tool_result.value` | any JSON | Result returned by the tool. |
+| `tool_result.is_error` | boolean | Whether the tool result is an error. |
 
 `tool_call.args` at `post_tool_call` MUST reflect the arguments actually passed
 to the tool, i.e., the post-`transform` value when a `transform` verdict was
@@ -348,6 +367,11 @@ applied at `pre_tool_call`.
 }
 ```
 
+| Field | Type | Constraint |
+| --- | --- | --- |
+| `output.content` | any JSON | Content of the output. |
+
+
 #### `agent_shutdown`
 
 ```jsonc
@@ -355,6 +379,10 @@ applied at `pre_tool_call`.
   "summary": { "reason": "completed" | "error" | "cancelled" }
 }
 ```
+
+| Field | Type | Constraint |
+| --- | --- | --- | 
+| `summary.reason` | string | Reason the agent shut down. |
 
 ### 4.3 Target
 
