@@ -40,13 +40,13 @@ Request extensions use the same shared namespace type. Namespace reservations,
 canonical byte caps, and other semantic rules still require checks beyond JSON
 Schema.
 
-`verdict.schema.json` is still the legacy generic path/value contract, not the
-validation root for hook responses. `approval.schema.json` still embeds that
-generic transform and `interception-record.schema.json` still projects a
-transform path. Their hook-aware migration is unresolved; neither schema
-establishes approval or record support for the new replacement payloads. The
-shared request metadata also still permits `request_id` and `usage` outside
-their intended model-hook scope. See the draft's explicit alignment notes in
+`verdict.schema.json` describes the union of hook-specific transform types, but
+it is not a per-hook validation root and cannot select the transform valid for a
+particular request. `approval.schema.json` now limits approval resolutions to
+allow/deny; they cannot carry transforms. `interception-record.schema.json`
+retains the transform decision but omits transform payloads. The shared request
+metadata still permits `request_id` and `usage` outside their intended
+model-hook scope. See the draft's alignment notes in
 [§4.5](../AGENT-HOOKS-0.1.md#45-optional--well-known-fields),
 [§9](../AGENT-HOOKS-0.1.md#9-approval-seam), and
 [§10.3](../AGENT-HOOKS-0.1.md#103-the-interception-record).

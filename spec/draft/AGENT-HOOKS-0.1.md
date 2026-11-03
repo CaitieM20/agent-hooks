@@ -6,12 +6,13 @@
 
 > **Hook-contract alignment proposal:** This draft specifies paired hook requests
 > and flat hook responses, including whole-value transforms. It does not migrate
-> the released SDKs or CTK. The generic `verdict.schema.json`, approval schemas,
-> and path-based record projection still describe the legacy contract; they are
-> not validation roots for hook responses. Approval transform specialization
-> (§9), payload-free record representation (§10.3), model-only optional metadata
-> (§4.5), and matching conformance coverage (§13.2) remain open alignment work.
-> Those seams must be resolved before claiming an end-to-end implemented contract.
+> the released SDKs or CTK. `verdict.schema.json` now describes the union of
+> hook-specific transforms, but only the per-hook response roots select the
+> transform valid for a particular request. Approval resolutions permit only
+> allow/deny, and the interception-record schema omits transform payloads.
+> Model-only optional metadata (§4.5), consistent runtime/CTK coverage (§13.2),
+> and validation of the prose semantics remain follow-up work; no end-to-end
+> implementation claim is made here.
 
 > **Status:** Beta · **Version:** `0.1.0-beta` · **Date:** 2026-10-02
 > **Editors:** Responsible AI / Agent Governance Toolkit
@@ -467,9 +468,10 @@ The section title is retained for existing links.
 
 These response roots are closed. Unknown root members, the old nested envelope,
 and transforms belonging to a different hook are invalid. The generic
-`verdict.schema.json` still accepts legacy path/value transforms and is not a
-substitute for these roots. `Verdict<TTransform>` is decision-only in the schema
-source; `HooksResponse<TTransform>` intersects it with response metadata.
+`verdict.schema.json` describes the union of hook transform types and is not a
+substitute for these roots: it cannot select the valid transform from the
+request's `interception_point`. `Verdict<TTransform>` is decision-only in the
+schema source; `HooksResponse<TTransform>` intersects it with response metadata.
 
 ```jsonc
 {
@@ -577,12 +579,12 @@ example, this is a complete `pre_tool_call` response, not a patch:
   `host_error:transform_invalid`. A lifecycle transform is forbidden per §4.3;
   that prohibition remains fail closed regardless of `on_error` (§6.3.1).
 
-**Legacy seam (informative):** `Transform` in the generic verdict and approval
-schemas still has `{path, value?}`, with `$target` / `$policy_target` roots and
-the grammar in [path-grammar.abnf](schema/path-grammar.abnf). That is not the
-hook response contract. This proposal neither removes those legacy artifacts
-nor defines an automatic path-to-whole-value conversion. Approval and record
-migration remain open in §9 and §10.3.
+**Legacy history (informative):** Earlier draft and released artifacts used
+`{path, value?}` transforms with `$target` / `$policy_target` roots and the
+grammar in [path-grammar.abnf](schema/path-grammar.abnf). The current draft hook
+response schemas use only the six whole-member payloads above; the grammar is
+not a transform format for these responses. No automatic path-to-whole-value
+conversion is defined.
 
 ### 5.3 Evidence
 
@@ -1015,21 +1017,21 @@ short-circuits: remaining interceptors are NOT invoked. If the deny is
 liftable and a resolver is registered, the host consults the approval
 seam (§9). Then, per the `on_approval` knob:
 
-- `"stop"`: a permit resolution becomes the combined verdict and the
+- `"stop"`: an allow resolution becomes the combined verdict and the
   emission ends — interceptors after the denying one are never
-  invoked. The record MUST set `fold_truncated: true` (interceptors
-  were skipped) and `resolved_by: "approval"`, so the truncation is
-  never silent.
-- `"resume"`: a permit resolution substitutes for the denying
-  interceptor's verdict (an `allow` continues with the context
-  unchanged; a `transform` is applied per §7.4) and the fold continues
-  with the next interceptor. Each subsequently encountered liftable
-  deny MUST be consulted in turn (consultations are bounded by the
-  number of registered interceptors), so two conformant hosts never
-  diverge on which denies were offered to the resolver. The record sets
-  `resolved_by: "approval"`; `fold_truncated` is `true` only if the
-  emission still ended before every interceptor ran (e.g., a later
-  plain deny).
+  invoked. It adds no transform; any earlier fold-through replacements
+  remain in the current context. The record MUST set
+  `fold_truncated: true` (interceptors were skipped) and
+  `resolved_by: "approval"`, so the truncation is never silent.
+- `"resume"`: an allow resolution substitutes for the denying
+  interceptor's verdict, leaves the current folded context unchanged,
+  and the fold continues with the next interceptor. Each subsequently
+  encountered liftable deny MUST be consulted in turn (consultations
+  are bounded by the number of registered interceptors), so two
+  conformant hosts never diverge on which denies were offered to the
+  resolver. The record sets `resolved_by: "approval"`;
+  `fold_truncated` is `true` only if the emission still ended before
+  every interceptor ran (e.g., a later plain deny).
 
 A rejected or unresolved resolution leaves the deny standing as the
 combined verdict in either knob position.
@@ -1054,9 +1056,9 @@ Approval in `run_all`: the seam is consulted **at most once per
 emission**, and only when the aggregate winner is a liftable deny and
 **every** deny returned in the emission carries an `approval` block (a
 single plain deny makes lifting pointless — severity already decided).
-A permit resolution lifts the entire deny set and becomes the combined
-verdict (an `allow` proceeds with the folded context; a `transform` is
-applied on top of it). A rejected or unresolved resolution leaves the
+A resolution carrying `allow` lifts the entire deny set and becomes the combined
+verdict; it proceeds with the context produced by the sequential fold and does
+not add a transform. A rejected or unresolved resolution leaves the
 aggregate deny standing.
 
 ### 7.5 Parallel profiles
@@ -1077,11 +1079,11 @@ aggregate (§7.3). If the winner is a `transform`:
     `{"decision": "deny", "reason": "host_error:transform_conflict"}`.
   - `"approval"`: the host synthesizes a liftable deny with reason
     `host_error:transform_conflict` and consults the seam (§9); the
-    resolver (typically a human) MAY resolve the conflict by returning
-    a `transform` of its own, or an `allow`, or reject.
+    resolver MAY approve with `allow` or reject. An allow proceeds with
+    the original snapshot; neither conflicting transform is applied.
 
 If the winner is a liftable deny (and no plain deny was returned), the
-host consults the seam at most once; a permit resolution becomes the
+host consults the seam at most once; an allow resolution becomes the
 combined verdict. Lower-severity transforms returned by other
 interceptors are NOT applied — they lost the aggregation; they appear
 in the record's `verdicts` summary.
@@ -1095,16 +1097,16 @@ Per `on_disagreement`:
   `{"decision": "deny", "reason": "host_error:composition_disagreement"}`.
 - `"approval"`: the host synthesizes a liftable deny with reason
   `host_error:composition_disagreement` and consults the seam; the
-  resolution (a verdict) becomes the combined verdict on permit.
+  allow resolution becomes the combined verdict; it does not apply any
+  transform that contributed to the disagreement.
 
 A host wanting transforms to participate in aggregation uses
 `parallel/strictest`; `unanimous` is deliberately strict.
 
 ### 7.6 Approval substitution
 
-Whenever a profile consults the approval seam and receives a permit
-resolution, that resolution's verdict — expressed in the same
-three-verdict vocabulary (§9) — **substitutes** for the verdict (or
+Whenever a profile consults the approval seam and receives a resolution
+carrying `allow`, that allow **substitutes** for the verdict (or
 synthesized verdict) that triggered the consultation, at that
 verdict's position in the profile's semantics. `decided_by` (§10.3)
 remains the index of the interceptor whose liftable deny was consulted
@@ -1112,12 +1114,6 @@ remains the index of the interceptor whose liftable deny was consulted
 the substitution. A §6.3.1 substitution is a different thing and is
 recorded by `substituted_for` on the slot's `verdicts` entry;
 `resolved_by` is unaffected by it.
-
-The rules in §7.4–§7.6 that describe an approval returning a transform retain
-the existing composition intent, but do not resolve the approval wire-type
-seam in §9. They are not authorization to apply a legacy path/value transform
-as a hook response. The hook-aware approval representation and validation must
-be settled together before exercising those branches against this draft.
 
 ### 7.7 Host declaration document
 
@@ -1541,18 +1537,16 @@ A host MUST support two modes, selected per session or per interception point:
 
 [Pure Specification]
 
-**Open approval alignment:** The current [approval source](schema/src/approval.ts)
-and [generated schema](schema/generated/approval.schema.json) still embed the
-legacy generic `TransformVerdict`; they do not carry the hook-specific §5.2
-replacement type. The flow, echo rule, fail-closed behavior, and allow/deny
-outcomes below are retained. The transform resolution branch is an unresolved
-draft seam, not an implemented hook-typed approval contract. The proposed
-direction is to pair approved replacements with the request hook and prohibit
-lifecycle replacements, but choosing concrete approval roots or another
-representation, and their validation order, requires separate schema work.
-This proposal neither changes that schema nor specifies a conversion from
-legacy paths. In particular, generic approval-schema acceptance is not evidence
-that a resolution is valid for a hook or allowed at startup.
+The current [approval source](schema/src/approval.ts) and
+[generated schema](schema/generated/approval.schema.json) permit an `approve`
+resolution to carry only an `allow` verdict and a `reject` resolution to carry
+only `deny`. Approval does not carry or apply a transform. A resolver that
+returns a transform or any other decision inconsistent with the outcome MUST
+be rejected as `host_error:verdict_invalid` by the validation rules below.
+This keeps approval distinct from the hook-specific transform contract;
+approval never changes content. Any content modification must come from a
+valid hook response at a point that permits transforms, not from an approval
+resolution.
 
 The approval seam is how a **liftable deny** (§5.1) may be lifted. The
 host consults a registered **approval resolver** exactly when the
@@ -1572,12 +1566,12 @@ composition profile in effect says to (§7.4–§7.6), and never at
 {
   "outcome": "approve" | "reject" | "unresolved",
   "context_identity": "<string>" | null,   // MUST equal the request's (echo rule)
-  "verdict": <a permit or deny Verdict>    // present iff outcome != "unresolved"
+  "verdict": <allow for approve; deny for reject> // absent iff unresolved
 }
 ```
 
-- `approve` MUST carry a permit verdict (`allow` or `transform`). It
-  substitutes per §7.6.
+- `approve` MUST carry `{"decision": "allow", ...}`. It substitutes per §7.6
+  and does not transform the hook context.
 - `reject` MUST carry `{"decision": "deny", ...}`. The triggering deny
   (or the resolver's deny) stands as the combined verdict.
 - `unresolved` means the resolver could not decide. The host MUST treat it as
@@ -1598,17 +1592,17 @@ composition profile in effect says to (§7.4–§7.6), and never at
   2. `outcome` is one of the three values, and `verdict` is present
      exactly when `outcome != "unresolved"` →
      `host_error:approval_resolver_failed`;
-  3. the carried `verdict` passes decision validation →
+  3. the carried `verdict` passes the relevant allow- or deny-verdict
+     schema for its outcome →
      `host_error:verdict_invalid`;
-  4. outcome/verdict consistency (`approve` carries a permit,
+  4. outcome/verdict consistency (`approve` carries an allow,
      `reject` carries a deny) → `host_error:verdict_invalid`.
 
   The order is normative so that independently implemented hosts
-  report the same reason for the same malformed resolution.
-  In the legacy approval artifact, step 3 validates the generic verdict;
-  that check does not validate §5.2 replacements. Hook-specific transform
-  validation remains part of the open alignment above. Response `extensions`
-  are not copied into an approval verdict merely because the response carries them.
+  report the same reason for the same malformed resolution. The generated
+  approval schema enforces these outcome-specific allow/deny shapes. Response
+  `extensions` are not copied into an approval verdict merely because the
+  response carries them.
 
 The `context_identity` presented in the request is computed by the
 identity provider from the context **as presented to the resolver** —
@@ -1773,24 +1767,21 @@ not the verdict verbatim:
   truncated);
 - `approval` presence is kept but its members are stripped (an empty
   object);
-- every §5.2 replacement payload is DROPPED, including nested input, messages,
-  response, args, result value, and output content;
+- the `transform` member and every replacement payload are DROPPED, including
+  nested input, messages, response, args, result value, and output content; the
+  `decision: "transform"` is retained;
 - `evidence` is kept — it is an opaque offline pointer by design
   (§5.3) and is bounded by the §5.3 size cap.
 
-**Open record alignment:** The legacy
-[record schema](schema/generated/interception-record.schema.json) still
-requires `transform.path` when `transform` is present; its old projection keeps
-that path and drops `transform.value`. New hook transforms have no such path.
-The exact replacement-free representation (for example decision alone,
-transform-presence, or a fixed affected-member identifier) is deliberately not
-selected here. Do not copy replacement contents or fabricate a legacy path to
-make the record validate. The source `VerdictProjection` also only declares
-`transform` and `approval`, rather than the full decision metadata listed above;
-that pre-existing mismatch needs alignment at the same time. The record
-skeleton and retained field rules below express the audit requirements, not
-proof that the current generated record schema represents hook transforms.
-No new transform record example is asserted conformant by this proposal.
+The [interception-record schema](schema/generated/interception-record.schema.json)
+and source now represent this payload-free projection: they retain the
+`transform` decision, omit the `transform` member and all replacement details,
+and define the decision metadata and warning projection described above. A
+host MUST NOT fabricate a path or include any replacement payload to represent
+a transform in a record. The updated
+[approved-transform example](schema/examples/InterceptionRecord/approved-transform.json)
+shows the transform decision without transform details; it is a record of an
+approval that lifted a deny, not an approval resolution containing a transform.
 
 The privacy requirement is that a record never contains payload-derived
 content beyond what an interceptor deliberately placed in a bounded
@@ -2157,10 +2148,10 @@ envelope rejection. Sequential fold-through, parallel conflict handling,
 
 The existing draft schema-example checker covers several shape cases, but
 schema tests do not prove host application, semantic metadata rules, or CTK
-coverage. Approval-transform and record-projection vectors must follow the
-decisions in §9 and §10.3 rather than silently accepting legacy artifacts as
-hook-typed ones. No new conformance claim or SDK migration is made by this
-prose update.
+coverage. Approval vectors must verify that `approve` accepts only `allow` and
+rejects transforms; record vectors must verify that transform decisions remain
+visible while transform payloads are omitted. No new conformance claim or SDK
+migration is made by this prose update.
 
 ### 13.3 Claims
 
