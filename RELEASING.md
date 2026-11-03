@@ -21,7 +21,7 @@ environment.
      `sdk/dotnet/test/AgentHooks.Tests/packages.lock.json`
    - install pins in `README.md` and the per-SDK READMEs
 
-   The `Version` line in `spec/draft/AGENT-HOOKS-0.1.md` carries the stage
+   The `Version` line in `spec/draft/agent-hooks-draft.md` carries the stage
    (`0.1.0-alpha`, `0.1.0-beta`), not the tag, and changes only when
    the stage changes.
 

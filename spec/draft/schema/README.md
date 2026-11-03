@@ -11,50 +11,11 @@ remain pinned as described above; do not treat these artifacts as an SDK
 migration. Do not edit generated JSON by hand.
 
 - Root schemas are written to `generated/*.schema.json`.
-- Per-interception-point schemas are derived from the agent-context union and
-  written to `generated/strict-contexts/*.schema.json`. Despite that directory
-  name, request roots are open; each variant requires its own hook payload.
+- `generated/strict-contexts/*.schema.json` contains the per-interception-point
+  request schemas. Each interception point is explicitly defined by its
+  `HookRequest` and `HookResponse` pair below.
 - `src/host-declaration.ts` generates both supported declaration schemas.
 - `path-grammar.abnf` remains a hand-maintained grammar, not generated output.
-
-## Draft hook request and response roots
-
-The [draft specification](../AGENT-HOOKS-0.1.md#5-verdict) pairs each request's
-`interception_point` with its response root:
-
-| Point | Response schema in `generated/` |
-| --- | --- |
-| `agent_startup` | [agent-startup-hook-response.schema.json](generated/agent-startup-hook-response.schema.json) |
-| `input` | [input-hook-response.schema.json](generated/input-hook-response.schema.json) |
-| `pre_model_call` | [pre-model-hook-response.schema.json](generated/pre-model-hook-response.schema.json) |
-| `post_model_call` | [post-model-hook-response.schema.json](generated/post-model-hook-response.schema.json) |
-| `pre_tool_call` | [pre-tool-hook-response.schema.json](generated/pre-tool-hook-response.schema.json) |
-| `post_tool_call` | [post-tool-hook-response.schema.json](generated/post-tool-hook-response.schema.json) |
-| `output` | [output-hook-response.schema.json](generated/output-hook-response.schema.json) |
-| `agent_shutdown` | [agent-shutdown-hook-response.schema.json](generated/agent-shutdown-hook-response.schema.json) |
-
-These are flat, closed response objects with optional namespaced root
-`extensions`, not `{verdict, extensions}` envelopes. Six roots specialize the
-whole-value replacement payload; startup and shutdown permit only allow/deny.
-Request extensions use the same shared namespace type. Namespace reservations,
-canonical byte caps, and other semantic rules still require checks beyond JSON
-Schema.
-
-`verdict.schema.json` describes the union of hook-specific transform types, but
-it is not a per-hook validation root and cannot select the transform valid for a
-particular request. `approval.schema.json` limits approval resolutions to
-allow/deny; they cannot carry transforms. `interception-record.schema.json`
-retains the transform decision but omits transform payloads. The request source
-scopes `request_id` and `tools` to `pre_model_call`, and `usage` to
-`post_model_call`. See the draft's alignment notes in
-[§4.5](../AGENT-HOOKS-0.1.md#45-optional--well-known-fields),
-[§9](../AGENT-HOOKS-0.1.md#9-approval-seam), and
-[§10.3](../AGENT-HOOKS-0.1.md#103-the-interception-record).
-
-From `sdk/typescript`, `node scripts/check-schema-examples.mjs` validates the
-draft example folders and includes positive/negative hook-response shape
-probes. It does not validate all prose semantics or replace the pending CTK and
-SDK migration described in [§13.2](../AGENT-HOOKS-0.1.md#132-ctk).
 
 ## Edit, generate and check
 
