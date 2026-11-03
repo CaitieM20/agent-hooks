@@ -26,7 +26,7 @@ jobs:
         env:
           SPEC_VERSION: 0.1.0
           SPEC_FILE: AGENT-HOOKS-0.1.md
-          DRAFT_SPEC_FILE: agent-hooks-draft.md
+          DRAFT_SPEC_FILE: AGENT-HOOKS-draft.md
           SCHEMA_PATH: v0.1
         run: |
           uv venv .mkdocs-venv
