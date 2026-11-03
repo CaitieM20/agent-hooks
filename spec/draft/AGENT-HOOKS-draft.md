@@ -21,7 +21,7 @@
 2. [Terminology](#2-terminology)
 3. [Interception points](#3-interception-points)
 4. [Hooks Request](#4-hooks-request)
-5. [Hooks Responses & Verdicts](#5-hooks-responses--verdicts)
+5. [Hooks Responses & Verdicts](#5-hooks-responses-verdicts)
 6. [Host obligations](#6-host-obligations)
 7. [Interceptor contract and composition](#7-interceptor-contract-and-composition)
 8. [Enforcement mode](#8-enforcement-mode)
