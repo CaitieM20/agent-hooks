@@ -4,16 +4,6 @@
 > It is not a released specification. The latest released specification is
 > [0.1.0](../0.1.0/AGENT-HOOKS-0.1.md).
 
-> **Hook-contract alignment proposal:** This draft specifies paired hook requests
-> and flat hook responses, including whole-value transforms. It does not migrate
-> the released SDKs or CTK. `verdict.schema.json` now describes the union of
-> hook-specific transforms, but only the per-hook response roots select the
-> transform valid for a particular request. Approval resolutions permit only
-> allow/deny, and the interception-record schema omits transform payloads.
-> Model-only optional metadata (§4.5), consistent runtime/CTK coverage (§13.2),
-> and validation of the prose semantics remain follow-up work; no end-to-end
-> implementation claim is made here.
-
 > **Status:** Beta · **Version:** `0.1.0-beta` · **Date:** 2026-10-02
 > **Editors:** Responsible AI / Agent Governance Toolkit
 >
