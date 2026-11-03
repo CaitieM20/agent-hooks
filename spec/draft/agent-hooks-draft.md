@@ -466,94 +466,24 @@ does not enforce them.
 An interceptor MUST return a `HooksResponse` conforming to the response schema
 for the request's `interception_point`. Each `HooksResponse` MUST contain a `Verdict`.
 
-| Interception point | HooksResponse type | Response schema |
-| --- | --- | --- |
-| `agent_startup` | `AgentStartupHookResponse` | [`agent-startup-hook-response.schema.json`](schema/generated/agent-startup-hook-response.schema.json) |
-| `input` | `InputHookResponse` | [`input-hook-response.schema.json`](schema/generated/input-hook-response.schema.json) |
-| `pre_model_call` | `PreModelHookResponse` | [`pre-model-hook-response.schema.json`](schema/generated/pre-model-hook-response.schema.json) |
-| `post_model_call` | `PostModelHookResponse` | [`post-model-hook-response.schema.json`](schema/generated/post-model-hook-response.schema.json) |
-| `pre_tool_call` | `PreToolHookResponse` | [`pre-tool-hook-response.schema.json`](schema/generated/pre-tool-hook-response.schema.json) |
-| `post_tool_call` | `PostToolHookResponse` | [`post-tool-hook-response.schema.json`](schema/generated/post-tool-hook-response.schema.json) |
-| `output` | `OutputHookResponse` | [`output-hook-response.schema.json`](schema/generated/output-hook-response.schema.json) |
-| `agent_shutdown` | `AgentShutdownHookResponse` | [`agent-shutdown-hook-response.schema.json`](schema/generated/agent-shutdown-hook-response.schema.json) |
-
-### Hook-specific response shapes
-
-Each response consists of a hook-specific `Verdict` plus optional root-level
-`extensions`. The `decision` member is required. The optional verdict members
-are `reason`, `message`, `warnings`, `evidence`, and `result_labels`; a `deny`
-may additionally include an `approval` object. Their constraints and semantics
-are defined in §5.1. For transform-capable hooks, `transform` is required when
-`decision` is `transform` and has the exact hook-specific shape below. Lifecycle
-responses support only `allow` and `deny`; all response types may carry
-`extensions` as described in §5.5.
-
-#### `agent_startup`
-
-`AgentStartupHookResponse` is a `NonTransformHookResponse`, defined by
-[`agent-startup-hook-response.schema.json`](schema/generated/agent-startup-hook-response.schema.json).
-It permits `allow` or `deny` (including an optional `approval` object on
-`deny`) and optional root `extensions`. It has no `transform` member.
-
-#### `input`
-
-`InputHookResponse` is a `HooksResponse<InputHookTransform>`, defined by
-[`input-hook-response.schema.json`](schema/generated/input-hook-response.schema.json).
-For `decision: "transform"`, it MUST include `transform.input`, which replaces
-the complete request `input` member, including both `content` and `role`:
-
-```json
+```jsonc
 {
-  "decision": "transform",
-  "transform": { "input": { "content": "sanitized", "role": "user" } }
+  "verdict": {...},
+  "extensions": { ...}  
 }
 ```
 
-#### `pre_model_call`
+| Interception point | HooksResponse type | Transform Verdict Supported|
+| --- | --- | --- |
+| `agent_startup` | `AgentStartupHookResponse` | no |
+| `input` | `InputHookResponse` |  yes |
+| `pre_model_call` | `PreModelHookResponse` | yes |
+| `post_model_call` | `PostModelHookResponse` | yes |
+| `pre_tool_call` | `PreToolHookResponse` | yes |
+| `post_tool_call` | `PostToolHookResponse` | yes |
+| `output` | `OutputHookResponse` | yes |
+| `agent_shutdown` | `AgentShutdownHookResponse` | no |
 
-`PreModelHookResponse` is a `HooksResponse<PreModelHookTransform>`, defined by
-[`pre-model-hook-response.schema.json`](schema/generated/pre-model-hook-response.schema.json).
-For `decision: "transform"`, it MUST include `transform.messages`, replacing
-the complete `messages` array sent to the model. The replacement MUST conform
-to the `messages` request shape in §4.2.
-
-#### `post_model_call`
-
-`PostModelHookResponse` is a `HooksResponse<PostModelHookTransform>`, defined
-by [`post-model-hook-response.schema.json`](schema/generated/post-model-hook-response.schema.json).
-For `decision: "transform"`, it MUST include `transform.response`, replacing
-the complete model `response`, including `content`, `tool_calls`, and
-`finish_reason`, with a value conforming to §4.2.
-
-#### `pre_tool_call`
-
-`PreToolHookResponse` is a `HooksResponse<PreToolHookTransform>`, defined by
-[`pre-tool-hook-response.schema.json`](schema/generated/pre-tool-hook-response.schema.json).
-For `decision: "transform"`, it MUST include `transform.args`, an object that
-replaces only `tool_call.args`. It does not replace the complete
-`tool_call` object.
-
-#### `post_tool_call`
-
-`PostToolHookResponse` is a `HooksResponse<PostToolHookTransform>`, defined by
-[`post-tool-hook-response.schema.json`](schema/generated/post-tool-hook-response.schema.json).
-For `decision: "transform"`, it MUST include `transform.value`, any JSON value
-that replaces only `tool_result.value`. It does not replace `tool_result` or
-the `tool_call`.
-
-#### `output`
-
-`OutputHookResponse` is a `HooksResponse<OutputHookTransform>`, defined by
-[`output-hook-response.schema.json`](schema/generated/output-hook-response.schema.json).
-For `decision: "transform"`, it MUST include `transform.output`, replacing
-the complete request `output` member, including its `content`.
-
-#### `agent_shutdown`
-
-`AgentShutdownHookResponse` is a `NonTransformHookResponse`, defined by
-[`agent-shutdown-hook-response.schema.json`](schema/generated/agent-shutdown-hook-response.schema.json).
-It permits `allow` or `deny` (including an optional `approval` object on
-`deny`) and optional root `extensions`. It has no `transform` member.
 
 ### 5.1 Verdict
 Every `HooksResponse` contains a `Verdict`, which defines whether the Action is allowed to proceed as defined by the `decision`. The `decision` MUST be one of `allow`, `deny`, or `transform`.
@@ -599,7 +529,7 @@ whose `evidence` is not an object, or whose
 `result_labels` is not an array of strings MUST treat it as
 `{"decision": "deny", "reason": "host_error:verdict_invalid"}`.
 
-#### 5.1.2 DataTypes
+#### 5.1.2 Verdict DataTypes
 ##### 5.1.2.1 Verdict Base
 Every `Verdict` MUST contain the following required members and MAY contain the following optional members:
 
@@ -683,6 +613,99 @@ grammar in [path-grammar.abnf](schema/path-grammar.abnf). The current draft hook
 response schemas use only the six whole-member payloads above; the grammar is
 not a transform format for these responses. No automatic path-to-whole-value
 conversion is defined.
+
+### 5.2 Hook-specific response shapes
+This section defines the hook-specific response shapes by interception point, notably the transform payload required for each transform-capable hook.
+
+#### 5.2.1 `agent_startup`
+
+`AgentStartupHookResponse` MUST NOT support a `transform` verdict.
+
+#### 5.2.2 `input`
+
+`InputHookResponse` is a `HooksResponse<InputHookTransform>`.
+For `decision: "transform"`, it MUST include `transform.input`, which replaces
+the complete request `input` member, including both `content` and `role`:
+
+```json
+{
+  "decision": "transform",
+  "transform": { "input": { "content": "sanitized", "role": "user" } }
+}
+```
+
+#### 5.2.3 `pre_model_call`
+
+`PreModelHookResponse` is a `HooksResponse<PreModelHookTransform>`.
+For `decision: "transform"`, it MUST include `transform.messages`, replacing
+the complete `messages` array sent to the model. The replacement MUST conform
+to the `messages` request shape in §4.2.
+
+```json
+{
+  "decision": "transform",
+  "transform": { "messages": [ ... ] }
+}
+```
+
+#### 5.2.4 `post_model_call`
+
+`PostModelHookResponse` is a `HooksResponse<PostModelHookTransform>`.
+For `decision: "transform"`, it MUST include `transform.response`, replacing
+the complete model `response`, including `content`, `tool_calls`, and
+`finish_reason`, with a value conforming to §4.2.
+
+```json
+{
+  "decision": "transform",
+  "transform": { "response": { ... } }
+}
+```
+
+#### 5.2.5 `pre_tool_call`
+
+`PreToolHookResponse` is a `HooksResponse<PreToolHookTransform>`.
+For `decision: "transform"`, it MUST include `transform.args`, an object that
+replaces only `tool_call.args`. It does not replace the complete
+`tool_call` object.
+
+```json
+{
+  "decision": "transform",
+  "transform": { "args": { ... } }
+}
+```
+
+#### 5.2.6 `post_tool_call`
+
+`PostToolHookResponse` is a `HooksResponse<PostToolHookTransform>`.
+For `decision: "transform"`, it MUST include `transform.value`, any JSON value
+that replaces only `tool_result.value`. It does not replace `tool_result` or
+the `tool_call`.
+
+```json
+{
+  "decision": "transform",
+  "transform": { "value": ... }
+}
+```
+
+#### 5.2.7 `output`
+
+`OutputHookResponse` is a `HooksResponse<OutputHookTransform>`.
+For `decision: "transform"`, it MUST include `transform.output`, replacing
+the complete request `output` member, including its `content`.
+
+```json
+{
+  "decision": "transform",
+  "transform": { "output": { ... } }
+}
+```
+
+#### 5.2.8 `agent_shutdown`
+
+`AgentShutdownHookResponse` MUST NOT support a `transform` verdict.
 
 ### 5.3 Evidence
 
