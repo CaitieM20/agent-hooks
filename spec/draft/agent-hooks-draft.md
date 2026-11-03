@@ -730,76 +730,6 @@ them as `extensions.<interceptor-namespace>.source_labels` on later hooks whose
 payload derives from that data. A host MUST NOT persist `result_labels` for an
 action that did not proceed (a `deny` that was not lifted).
 
-### 5.5 Transport response envelope
-
-[Pure Specification]
-
-The heading is retained for existing links. The draft supersedes the nested
-transport envelope adopted under P-006 with the flat per-hook response in §5.
-The historical proposal and released contract are not changed. The same flat
-shape applies in-process and across a hosted or cross-process transport:
-
-```json
-{
-  "decision": "allow",
-  "extensions": {
-    "provider": { "receipt": "opaque-provider-receipt" }
-  }
-}
-```
-
-There is no draft `interceptor-response.schema.json`; select the matching hook
-response root in §5. `extensions`, when present, MUST be a JSON object and uses the
-§4.5 namespace grammar and reservations (`acs`, `ctk`, `agent_hooks`).
-Providers MUST NOT
-use those namespaces for provider-specific data.
-When the response is received as JSON text, a duplicate member at any
-object level of the text, including inside decision fields and
-`extensions`, is invalid. An already-parsed value cannot expose duplicates
-that its receiving parser has collapsed.
-
-The UTF-8 byte length of the RFC 8785 canonical form of the complete
-`extensions` object MUST NOT exceed 65536 bytes, including namespace keys
-and data across all providers. An absent member contributes zero;
-an explicitly present empty object contributes
-two bytes. This bound is independent of the §5.3 evidence cap of 10240
-bytes; neither bound includes the other field. Response parsers MUST
-enforce this bound; JSON Schema cannot express canonical byte length.
-
-Extension data MUST satisfy the §4.4 I-JSON domain.
-Integer literals outside ±(2^53−1) MUST be rejected, not rounded;
-larger integers must be encoded as strings. SDKs re-serialize this
-data as I-JSON and do not preserve transport bytes or number spellings.
-Providers signing receipts MUST define and sign a canonical form.
-Receipts are provider data carried under `extensions.<provider>.receipt`,
-not a dedicated root member. Distinct provider namespaces prevent
-collisions and identify each field's producer; clients locating a receipt
-must know its provider's namespace.
-The response carries no version of its own: it uses the Agent Hooks
-wire version selected by the transport or evaluated `AgentContext.spec`.
-Provider receipt contracts may have their own versions.
-
-Only the decision fields participate in §6–§9 enforcement and
-composition. A receipt or extension cannot alter the decision,
-approval, transform, warnings, evidence, or result labels. Response extensions
-are not unioned by composition and MUST NOT influence winner selection.
-A host MUST treat malformed response metadata as
-`{"decision": "deny", "reason": "host_error:verdict_invalid"}` per §6.3,
-even when its decision fields would be valid in isolation.
-
-Agent Hooks does not interpret or
-persist `extensions`, and they are not added to the
-payload-free §10.3 `InterceptionRecord`. Providers MAY define a
-stricter receipt schema and binding/signature rules outside this
-specification.
-
-**SDK migration (informative):** Existing released SDK strict-verdict and
-envelope-normalization gates have not been migrated by this proposal. An
-adapter supporting an older transport must document that compatibility
-boundary; accepting an old envelope is not validation of a draft hook response.
-No new compatibility adapter or SDK API is specified here.
-
----
 
 ## 6. Host obligations
 
@@ -974,8 +904,8 @@ instead of it.
 
 [Pure Specification]
 
-An interceptor is a callable receiving one hook request and returning its
-matching §5 response. Dispatch and validation MUST use the request's
+An interceptor is a callable receiving one `HooksRequest` and returning its
+matching `HooksResponse`. Dispatch and validation MUST use the request's
 `interception_point`, not a caller-selected generic verdict schema. A host:
 
 - MUST NOT begin the guarded action until composition (per the declared
@@ -992,7 +922,7 @@ matching §5 response. Dispatch and validation MUST use the request's
 
 A registered interceptor can use a remote service to compute its
 verdict. The in-process callable remains the trusted interceptor (§1.4)
-and returns the §5 hook response for the context it received. Delegating
+and returns the §5 `HooksResponse` for the context it received. Delegating
 computation does not transfer the host's composition or enforcement
 obligations. The failure rules in §6.3 and timeout guidance above still
 apply. Transport selection, service authentication, and protection of
@@ -1003,7 +933,7 @@ wraps the interceptor call in its own timer and applies §6.3 on
 breach. An interceptor that runs external work (a child process, an
 HTTP call) MAY own the deadline instead. Such a **managed
 interceptor** returns a typed outcome rather than a bare hook response:
-one of `verdict` (carrying the matching §5 response), `timeout`, `cancelled` or
+one of `verdict` (carrying the matching `HooksResponse`), `timeout`, `cancelled` or
 `failed`. The SDK emitter provides this outcome type and a
 registration path for it. A managed interceptor:
 
@@ -1018,7 +948,8 @@ registration path for it. A managed interceptor:
   reasons (shutdown, the caller went away). A cancelled outcome is
   never a timeout.
 
-The emitter maps the outcomes: `verdict` passes through the §5 gate
+The emitter maps the outcomes: `verdict` passes through the `HooksResponse` validation
+gate
 as any returned value does; `timeout` is the timeout failure of §6.3
 and follows the registration's `on_error`; `failed` is the raise
 failure of §6.3 and follows `on_error`; `cancelled` is
@@ -1026,16 +957,6 @@ failure of §6.3 and follows `on_error`; `cancelled` is
 host MUST NOT infer a timeout from an ordinary hook response or from a
 cancellation, and MUST NOT treat a `timeout` reported without cleanup
 as conformant.
-
-*Informative type mapping.* The draft schema source exposes eight synchronous
-handler aliases in [hook-responses.ts](schema/src/hook-responses.ts):
-`AgentStartupHookHandler`, `InputHookHandler`, `PreModelHookHandler`,
-`PostModelHookHandler`, `PreToolHookHandler`, `PostToolHookHandler`,
-`OutputHookHandler`, and `AgentShutdownHookHandler`. Each pairs its request with
-the corresponding response in §5 through `HookHandler<TRequest, TResponse>`.
-These TypeScript aliases do not change released SDK registration or managed
-outcome APIs. The normative requirement is the JSON pairing, not a particular
-language callable signature.
 
 ### 7.1 Composition is host configuration
 
@@ -1658,17 +1579,6 @@ A host MUST support two modes, selected per session or per interception point:
 
 [Pure Specification]
 
-The current [approval source](schema/src/approval.ts) and
-[generated schema](schema/generated/approval.schema.json) permit an `approve`
-resolution to carry only an `allow` verdict and a `reject` resolution to carry
-only `deny`. Approval does not carry or apply a transform. A resolver that
-returns a transform or any other decision inconsistent with the outcome MUST
-be rejected as `host_error:verdict_invalid` by the validation rules below.
-This keeps approval distinct from the hook-specific transform contract;
-approval never changes content. Any content modification must come from a
-valid hook response at a point that permits transforms, not from an approval
-resolution.
-
 The approval seam is how a **liftable deny** (§5.1) may be lifted. The
 host consults a registered **approval resolver** exactly when the
 composition profile in effect says to (§7.4–§7.6), and never at
@@ -1749,10 +1659,7 @@ Rules:
   `deny host_error:approval_resolver_failed`;
 - hosts SHOULD document removed content under
   `extensions.<host>.redacted`: an array of strings identifying removed
-  request fields. The host MUST document the path notation it uses; this
-  proposal does not choose a new redaction-path grammar. These descriptions
-  are metadata, not executable transform selectors. `<host>` must be a
-  namespace the host owns under §4.5, not a reserved namespace it does not own.
+  request fields.
 
 ---
 
@@ -1831,22 +1738,6 @@ where:
   or `tool_call.content_hash` — are excluded, so adding optional data
   never perturbs the identity.
 
-The required root projection is exactly `spec`, `interception_point`,
-`timestamp`, `sequence`, `agent`, `session`, plus that point's required
-payloads from §4.2 (including `model` at model hooks and `tool_call` at both
-tool hooks). There is no `target` member in this projection. Open-root extras,
-request `extensions`, `request_id`, and `usage` are excluded; response metadata
-is never part of a context identity. Within each `response.tool_calls` entry,
-`name` and `args` are required and optional `id` is excluded. JSON-valued
-content and args retain their contents; the projection does not strip arbitrary
-application members inside them.
-
-**Identity implementation alignment:** The existing golden vectors and released
-providers are not revised here. Their projection and optional model tool-call ID
-handling must be checked against this exact required-member set before they
-can attest this draft. Removing a previously hashed synthetic `target` or
-optional ID can change hashes; this proposal makes no compatibility claim.
-
 **Input domain (fail closed, never normalize).** RFC 8785 defines
 canonical bytes only for I-JSON ([RFC 7493]) data. The provider MUST
 reject — as `deny` with `host_error:context_invalid` and a
@@ -1876,8 +1767,7 @@ verdict, never a plausible one.
 ### 10.3 The interception record
 
 A host MUST produce one **InterceptionRecord** per emission. The record
-is payload-free: it carries no context or replacement payload. Because the
-combined verdict itself can carry replacement content, the record
+is payload-free: it carries no context or transform payload. The record
 MUST carry the **payload-free projection** of the combined verdict,
 not the verdict verbatim:
 
@@ -1894,17 +1784,7 @@ not the verdict verbatim:
 - `evidence` is kept — it is an opaque offline pointer by design
   (§5.3) and is bounded by the §5.3 size cap.
 
-The [interception-record schema](schema/generated/interception-record.schema.json)
-and source now represent this payload-free projection: they retain the
-`transform` decision, omit the `transform` member and all replacement details,
-and define the decision metadata and warning projection described above. A
-host MUST NOT fabricate a path or include any replacement payload to represent
-a transform in a record. The updated
-[approved-transform example](schema/examples/InterceptionRecord/approved-transform.json)
-shows the transform decision without transform details; it is a record of an
-approval that lifted a deny, not an approval resolution containing a transform.
-
-The privacy requirement is that a record never contains payload-derived
+The projection guarantees: a record never contains target-derived
 content beyond what an interceptor deliberately placed in a bounded
 `reason`/truncated `message`, and its size is bounded by the §5.3
 evidence cap plus fixed-size members. The full combined verdict
@@ -2028,9 +1908,6 @@ Removed relative to earlier drafts: `host_error:approval_resolver_missing`
 `approval_identity_mismatch`).
 
 The machine-readable inventory is `spec/draft/reserved-reasons.json`.
-Its reason identifiers are unchanged. Its cause descriptions still refer to
-the legacy path/envelope contract and need a coordinated follow-up with the
-validators and vectors; they do not establish path semantics for §5.2.
 
 ### 11.1 Reserved warnings
 
@@ -2310,9 +2187,9 @@ not a certification. The companion threat model with
 threat→mitigation→test traceability is `docs/THREAT-MODEL.md`.
 
 
-- An interceptor receives the full hook request, which may contain user PII, secrets in
+- An interceptor receives the full `HooksRequest`, which may contain user PII, secrets in
   tool arguments, or model output. Hosts SHOULD redact known-sensitive fields
-  before constructing `AgentContext` when the interceptor's trust level does not
+  before constructing it when the interceptor's trust level does not
   warrant raw access, and SHOULD document any redaction in
   `extensions.<host>.redacted: ["<field-path>", ...]`, using the host-documented
   notation described in §9. These redaction descriptions do not select
