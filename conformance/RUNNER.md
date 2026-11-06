@@ -27,11 +27,7 @@ released version. The gating runs are under 0.1, the newest released
 version; binding tests to a draft revision is #188.
 
 ```
-for each vector file in conformance/vectors/*.json:
-  0.  if vector.introduced_in == "draft" and harness.spec != "agent-hooks/draft":
-        yield {status:"skip", detail:"draft-only vector; see #188"}; continue
-      # the working test set for the next version runs under the draft only
-
+for each vector file in conformance/0.1/vectors/*.json:
   1.  skip = ctk_should_skip(vector, harness.capabilities)
       if skip: yield {status:"skip", detail:skip}; continue
 
@@ -84,16 +80,27 @@ Group the yielded results by each vector's `part` tag
 [`CLAIMS.md`](CLAIMS.md)). Skips must show their reason (a missing
 capability such as `int64_json` is honest surface, not a failure).
 
-Each SDK runner has the grouping as a function that takes the
+Each SDK runner currently loads the released 0.1 suite from
+`conformance/0.1/vectors/` (or its packaged mirror). The separate
+`conformance/draft/` suite is validated by repository CI. The advisory
+`draft-tests` job runs only its 14 vectors whose IDs are absent from the
+released suite; it does not rerun shared coverage under draft.
+Each runner has the grouping as a function that takes the
 specification version the claim names and the results:
 `conformance_report(spec, results)` in Rust and Python,
 `conformanceReport` in TypeScript, `Runner.Report` in .NET, `Report`
 in Go. It returns the parts in name order with their counts and
-totals. It refuses `agent-hooks/draft` with one line: the vectors under
-`conformance/` are the working test set for the next version, carried
-under the draft because they exercise behaviour no released version
-has, so running them is development and the report of such a run is
-not a claim. A claim names a released version.
+totals. It refuses `agent-hooks/draft` with one line because the draft
+is not a released conformance claim. The default SDK self-test runs only the
+0.1 suite; draft-only checks are selected separately.
+
+The five reference harnesses ship a declaration/1.0 document naming
+`agent-hooks/0.1`, without draft-only failure-posture fields. Field-based
+vectors run through that released declaration; declaration-based fixtures use
+their loaded emitter's specification for generated contexts. Shared builder
+and runner-defect fixtures also come from the 0.1 suite, not a second draft
+copy. SDK unit tests for draft-only runtime behavior and version boundaries
+remain separate from released conformance coverage.
 
 The `Harness` interface (native, per language) is documented in
 [`HARNESS.md`](HARNESS.md). Each SDK ships this runner under

@@ -81,23 +81,17 @@ Equivalent interfaces ship in `sdk/typescript/src/ctk/index.ts`,
 `sdk/dotnet/src/AgentHooks.Conformance/IHarness.cs`,
 `sdk/go/conformance/harness.go`, and `sdk/rust/core/src/ctk.rs (`ctk` feature)`.
 
-The vectors under `conformance/` are two sets. The released set, every
-vector without `introduced_in`, is what the gating runs use: its host
-declarations name `agent-hooks/0.1`, and a harness under 0.1 runs it.
-The 17 draft-only vectors, `AH-CTK-144` to `AH-CTK-160` with
-`introduced_in: draft`, are the working test set for the next
-specification version. They are carried under `agent-hooks/draft`
-because they exercise behaviour no released version has (`on_error`,
-declaration 1.1, the reserved warnings); a harness under a released
-version skips them with the reason `draft-only vector; see #188`, and
-the advisory `draft-tests` job runs them under the draft. A harness
-states the version it builds under in `spec`; the reference harnesses
-take it in their constructor and build their contexts under the
-emitter's version, so a declaration vector's own document decides.
-Nothing is claimed against the draft: a claim names a released version,
-and every runner refuses a conformance report that names
-`agent-hooks/draft` ([RUNNER.md](RUNNER.md)). Binding tests to a draft
-revision is #188.
+SDK CTK runs currently use `conformance/0.1/` and report against the
+released `agent-hooks/0.1` contract. The separate
+`conformance/draft/` suite tracks work on the next specification
+version and is validated by repository CI. The advisory `draft-tests` job
+executes only the 14 draft-only IDs absent from the released suite,
+alongside version-boundary and draft-only runtime unit tests. Reference
+harnesses require an explicit specification version; their committed
+declaration/1.0 document names `agent-hooks/0.1`;
+contexts follow the specification of the loaded emitter. A claim names a released version, and
+every runner refuses a conformance report that names
+`agent-hooks/draft` ([RUNNER.md](RUNNER.md)).
 
 ## Mock model
 
@@ -368,9 +362,7 @@ validates against the schemas of the bundle it names.
 ```bash
 # Python
 pytest --agent-hooks-harness=my_pkg.MyFrameworkHarness \
-       --agent-hooks-vectors=path/to/conformance/vectors
-# The built-in reference harness, under the version it should run
-pytest --agent-hooks-spec=agent-hooks/0.1
+       --agent-hooks-vectors=path/to/conformance/0.1/vectors
 ```
 
 See per-language `sdk/<lang>/README.md` for the equivalent invocation.
