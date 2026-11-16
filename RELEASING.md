@@ -57,8 +57,9 @@ MAJOR for a breaking one. Cut it in one spec-only pull request.
    names, and lists the versions in the navigation, newest first, then
    the draft.
 7. Run the checks that read the new folder; the `lint`,
-   `schema-lint`, `typescript`, `change-class` and `pages` jobs run
-   the same commands (`ajv` is `ajv-cli`, installed as in `ci.yml`):
+   `schema-lint`, `conformance-lint`, `typescript`, `change-class` and
+   `pages` jobs cover the same checks (`ajv` is `ajv-cli`, installed as
+   in `ci.yml`):
 
    ```bash
    python3 scripts/check-spec-versions.py

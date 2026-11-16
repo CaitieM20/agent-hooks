@@ -105,8 +105,9 @@ advisory summary. Commit draft source and generated JSON together, but
 refresh the SDK draft mirror only when its implementation is updated to
 match. When a shape changes, also run
 the `spec` job's source, example and equivalence checks and the
-`schema-lint` steps from `.github/workflows/ci.yml` (ajv compiles every
-schema and validates the vectors). The `schema-drift` workflow checks
+`schema-lint` and `conformance-lint` jobs from `.github/workflows/ci.yml`
+(`schema-lint` compiles specification schemas; `conformance-lint` validates
+released vectors). The `schema-drift` workflow checks
 generated draft output and the SDK mirrors. Run the equivalence script
 against `origin/main` to see which instances change verdict.
 
