@@ -56,9 +56,16 @@ jobs:
               esac
             done < "$RUNNER_TEMP/changed-paths"
           fi
-          for name in shared spec conformance rust python typescript dotnet go; do
-            echo "$name=${!name}" >> "$GITHUB_OUTPUT"
-          done
+          {
+            echo "shared=$shared"
+            echo "spec=$spec"
+            echo "conformance=$conformance"
+            echo "rust=$rust"
+            echo "python=$python"
+            echo "typescript=$typescript"
+            echo "dotnet=$dotnet"
+            echo "go=$go"
+          } >> "$GITHUB_OUTPUT"
 
   spec:
     needs: [changes]
