@@ -10,7 +10,7 @@ development and the Python mirror read this folder; an SDK release
 names the specification versions it supports in
 `SUPPORTED_SPEC_VERSIONS` (VERSIONING.md).
 
-The TypeScript files in `src/` are the editable schema source.
+`src/schema.ts` is the editable draft schema source.
 `generated/` contains the committed draft JSON Schemas. Do not edit generated JSON by hand.
 
 - Root schemas are written to `generated/*.schema.json`.
@@ -27,7 +27,7 @@ The TypeScript files in `src/` are the editable schema source.
   startup and shutdown permit only allow or deny. P-006's metadata limits and
   enforcement separation still apply, including rules enforced by parsers
   rather than JSON Schema.
-- `src/host-declaration.ts` generates the draft declaration schema.
+- `HostDeclaration` in `src/schema.ts` generates the draft declaration schema.
 - The P-193 draft declaration format is not yet implemented by SDK loaders or
   CTK fixtures; released 0.1 retains its existing declaration schema.
 - `path-grammar.abnf` remains a hand-maintained grammar, not generated output.
@@ -44,9 +44,12 @@ npm run check:schema
 npm run check:schema:equivalence -- --old <git-ref> --structural-diff
 ```
 
-Edit the relevant file in `src/`, regenerate, and commit source and output
+Edit `src/schema.ts`, regenerate, and commit source and output
 together. `check:schema` type-checks the source and rejects missing, changed
-or unexpected generated schemas. Equivalence checks accept Git revisions
+or unexpected generated schemas. When changing the definitions exposed by
+`approval.schema.json`, update `APPROVAL_TYPES` in the generator as well;
+the file is a definitions-only schema rather than a single root type.
+Equivalence checks accept Git revisions
 before and after this layout change, a schema output directory, or a
 a `schema/` directory containing `generated/`. They compare schemas by
 their stable published identities, not checkout paths.

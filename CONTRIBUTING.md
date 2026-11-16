@@ -68,9 +68,8 @@ what validators, the conformance kit and the SDK mirrors consume. Do not
 edit it by hand; the `lint` and `drift` checks fail on any byte that
 differs from the generated text.
 
-- One source file per root schema (`verdict.ts`, `agent-context.ts`,
-  `approval.ts`, and so on; `host-declaration.ts` builds both contract
-  versions), written as interfaces, string enums and JSDoc. The
+- The draft uses one source file, `schema.ts`, written as interfaces,
+  string enums and JSDoc. Released bundles retain their frozen layout. The
   generator runs typescript-json-schema 0.68.0 with `--required
   --defaultNumberType integer --skipLibCheck --strictNullChecks` and
   reads these tags: `@pattern`, `@minimum`, `@maximum`, `@minLength`,
