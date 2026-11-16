@@ -96,7 +96,7 @@ async fn ctk_reference_released_set_under_0_1() {
     assert_eq!(streaming.skipped, 4);
 }
 
-/// Advisory (the draft-tests job): the full draft suite runs under draft.
+/// Advisory (the draft-rust job): the full draft suite runs under draft.
 #[tokio::test]
 async fn draft_suite_vectors_pass_under_the_draft() {
     let vectors = load_vectors(concat!(

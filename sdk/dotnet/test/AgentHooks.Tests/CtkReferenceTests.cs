@@ -115,7 +115,7 @@ public sealed class CtkReferenceTests
             v => (string?)v["introduced_in"] == "draft");
     }
 
-    /// <summary>Advisory (the draft-tests job): the full draft suite runs
+    /// <summary>Advisory (the draft-dotnet job): the full draft suite runs
     /// under the draft.</summary>
     [Fact]
     [Trait("Category", "draft")]

@@ -42,7 +42,8 @@
   the 17 draft-only vectors (`introduced_in: draft`) with the reason
   `draft-only vector; see #188`. Those vectors and the SDK tests that
   read draft-only files (the draft's inventories, examples and schemas)
-  run in the advisory `draft-tests` job, never in a required one, so a
+  run in advisory draft jobs (`draft-vectors` and the per-SDK `draft-*`
+  jobs), never in a required one, so a
   draft change cannot turn a required check red. Mark such a test the
   way its suite filters: a `draft_only_` name prefix in Rust
   (`cargo test -- --skip draft_only`), the `draft` pytest marker
