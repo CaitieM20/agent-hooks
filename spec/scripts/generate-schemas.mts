@@ -47,6 +47,7 @@ const SPEC = specArg >= 0 && specArg + 1 < process.argv.length ? process.argv[sp
 const SCHEMA_DIR = `spec/${SPEC}/schema`;
 const SRC = join(ROOT, "spec", SPEC, "schema", "src");
 const OUT = join(ROOT, "spec", SPEC, "schema", "generated");
+const SINGLE_SOURCE = existsSync(join(SRC, "schema.ts"));
 // Published identity of the bundle's schemas. The draft publishes under
 // schema/draft/ (mutable); a released version X.Y publishes under
 // schema/vX.Y/ (immutable). --id-base <url> overrides both.
@@ -173,11 +174,18 @@ const ROOTS: Root[] = [
 ];
 
 const MASTER = "agent-context.schema.json";
+// The old approval.ts root included its private base as well as its exports.
+// Keep this list explicit when all types share one source file.
+const APPROVAL_TYPES = [
+  "LiftableDeny", "request", "Outcome", "ResolutionBase", "ApproveResolution",
+  "RejectResolution", "UnresolvedResolution", "resolution",
+];
 
 const compilerOptions = JSON.parse(readFileSync(join(SRC, "tsconfig.json"), "utf8")).compilerOptions;
 const programs = new Map<string, TJS.Program>();
 
 function programFor(source: string): TJS.Program {
+  if (SINGLE_SOURCE) source = "schema.ts";
   let program = programs.get(source);
   if (!program) {
     program = TJS.getProgramFromFiles([join(SRC, source)], compilerOptions, SRC);
@@ -198,11 +206,14 @@ function ordered(schema: Schema): Schema {
 
 function generateRoot(root: Root): Schema {
   const program = programFor(root.source);
-  // TJS compares this allowlist to TypeScript's normalized filenames exactly.
+  // For a multi-file bundle TJS compares the allowlist to normalized filenames.
   const only = root.type === "*" ? program.getRootFileNames().map((f) => f.replaceAll("\\", "/")) : undefined;
-  const raw = TJS.generateSchema(program, root.type, SETTINGS, only);
+  const generator = SINGLE_SOURCE && root.type === "*" ? TJS.buildGenerator(program, SETTINGS) : null;
+  const raw = SINGLE_SOURCE && root.type === "*"
+    ? generator?.getSchemaForSymbols(APPROVAL_TYPES, true, true)
+    : TJS.generateSchema(program, root.type, SETTINGS, only);
   if (!raw) {
-    throw new Error(`${root.source}: no schema for ${root.type}`);
+    throw new Error(`${SINGLE_SOURCE ? "schema.ts" : root.source}: no schema for ${root.type}`);
   }
   // 1 and 2: the 2020-12 spelling of the draft-07 output.
   const text = JSON.stringify(raw).replace(/"#\/definitions\//g, () => '"#/$defs/');
@@ -320,7 +331,7 @@ function render(): Map<string, string> {
   const files = new Map<string, Schema>();
   for (const root of ROOTS) {
     if (!defines(root)) {
-      console.log(`${SCHEMA_DIR}/src/${root.source} does not define ${root.type}; ${root.file} is not generated for this bundle`);
+      console.log(`${SCHEMA_DIR}/src/${SINGLE_SOURCE ? "schema.ts" : root.source} does not define ${root.type}; ${root.file} is not generated for this bundle`);
       continue;
     }
     files.set(root.file, generateRoot(root));
