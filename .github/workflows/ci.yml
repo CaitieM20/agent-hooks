@@ -237,6 +237,9 @@ jobs:
         with: { node-version: "22" }
       - run: npm ci
         working-directory: sdk/typescript
+      # SDK tests import the spec tooling directly and resolve its own dependencies.
+      - run: npm ci
+        working-directory: spec/scripts
       - run: cargo fetch --locked
         # napi-cli does not forward --locked; fetching first pins the
         # graph, and the build below resolves offline-consistent.
