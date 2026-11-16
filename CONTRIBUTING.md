@@ -8,9 +8,12 @@
 - **Proposals first** for contract-level changes: see
   [docs/proposals/README.md](docs/proposals/README.md) for the change
   classes that require a written proposal before implementation.
-- **Everything lands by PR.** `main` is protected: required status
-  checks across all five SDKs plus schema-drift and CodeQL, linear
-  history (rebase merges), no force pushes.
+- **Everything lands by PR.** `main` is protected with linear history
+  (rebase merges) and no force pushes. Branch protection should require
+  the `ci` aggregate gate alongside the separate schema-drift and CodeQL
+  checks. The gate accepts jobs skipped by path filtering, but fails when
+  a blocking job fails or is cancelled. Cross-platform, draft and `lint`
+  jobs remain advisory. Pushes to `main` run every job.
 
 ## What a PR must include
 

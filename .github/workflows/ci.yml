@@ -14,7 +14,55 @@ permissions:
 # the draft is spec/draft, named where a step reads it alone.
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      spec: ${{ steps.filter.outputs.spec }}
+      conformance: ${{ steps.filter.outputs.conformance }}
+      rust: ${{ steps.filter.outputs.rust }}
+      python: ${{ steps.filter.outputs.python }}
+      typescript: ${{ steps.filter.outputs.typescript }}
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -eu
+          shared=false spec=false conformance=false rust=false python=false typescript=false dotnet=false go=false
+          if [ "$EVENT_NAME" = push ]; then
+            shared=true
+          else
+            # Compare the checked-out merge commit with the PR base, including
+            # both paths of a rename. Unknown paths conservatively run all jobs.
+            git diff --name-only --no-renames -z "$BASE_SHA" "$GITHUB_SHA" > "$RUNNER_TEMP/changed-paths"
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                spec/*) spec=true ;;
+                conformance/*) conformance=true ;;
+                sdk/rust/*) rust=true ;;
+                sdk/python/*) python=true ;;
+                sdk/typescript/*) typescript=true ;;
+                sdk/dotnet/*) dotnet=true ;;
+                sdk/go/*) go=true ;;
+                *) shared=true ;;
+              esac
+            done < "$RUNNER_TEMP/changed-paths"
+          fi
+          for name in shared spec conformance rust python typescript dotnet go; do
+            echo "$name=${!name}" >> "$GITHUB_OUTPUT"
+          done
+
   spec:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -128,6 +176,8 @@ jobs:
           fi
 
   schema-lint:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -167,6 +217,8 @@ jobs:
           fi
           echo "schemas validated for $validated bundle(s)"
   conformance-lint:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -207,6 +259,8 @@ jobs:
           echo "released conformance suites validated: $validated"
 
   python:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -229,8 +283,8 @@ jobs:
       - run: pytest sdk/python/tests -p no:agent_hooks_ctk -m "not draft" -v
 
   typescript:
-    needs: [spec]
-    if: always()
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -259,17 +313,9 @@ jobs:
       # two files. test/draft/ is the advisory set, run in draft-typescript.
       - run: node --test test/*.mjs
         working-directory: sdk/typescript
-      - name: Preserve the TypeScript required-check gate for spec checks
-        if: always()
-        env:
-          SPEC_RESULT: ${{ needs.spec.result }}
-        run: |
-          if [ "$SPEC_RESULT" != "success" ]; then
-            echo "::error::the spec job did not succeed"
-            exit 1
-          fi
-
   rust:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -284,6 +330,8 @@ jobs:
         working-directory: sdk/rust
 
   dotnet:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -308,6 +356,8 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
 
   go:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -334,6 +384,8 @@ jobs:
   # Advisory: not in the required-check set yet — required
   # names must be stable and always-reporting (see CONTRIBUTING.md).
   rust-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -347,6 +399,8 @@ jobs:
         working-directory: sdk/rust
 
   dotnet-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.dotnet == 'true'
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -395,6 +449,8 @@ jobs:
   # draft-only tests. Failures are summarized without blocking required
   # released SDK checks. Binding tests to a draft revision is #188.
   draft-vectors:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -432,6 +488,8 @@ jobs:
           fi
 
   draft-rust:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -458,6 +516,8 @@ jobs:
           fi
 
   draft-python:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -489,6 +549,8 @@ jobs:
           fi
 
   draft-typescript:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -523,6 +585,8 @@ jobs:
           fi
 
   draft-dotnet:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -562,6 +626,8 @@ jobs:
           fi
 
   draft-go:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -604,8 +670,7 @@ jobs:
   # the version surfaces are checked for agreement (VERSIONING.md).
   # Advisory: not in the required-check set yet (names must prove stable).
   lint:
-    needs: [spec]
-    if: always()
+    needs: [changes]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -626,21 +691,13 @@ jobs:
         run: python3 -m unittest discover -s scripts -p "test_*.py" -v
       - name: Source files carry the standard file header
         run: python3 scripts/check-file-headers.py
-      - name: Preserve the lint required-check gate for spec checks
-        if: always()
-        env:
-          SPEC_RESULT: ${{ needs.spec.result }}
-        run: |
-          if [ "$SPEC_RESULT" != "success" ]; then
-            echo "::error::the spec job did not succeed"
-            exit 1
-          fi
-
   # Dependency advisories, license allowlist, bans and source checks for
   # every cargo root. deny.toml at the repository root governs
   # all three; the vendored JCS serializer's one retained dependency
   # (ryu-js) is covered like every other node.
   cargo-deny:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true' || needs.changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -656,6 +713,8 @@ jobs:
           done
 
   python-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -678,6 +737,8 @@ jobs:
           pytest sdk/python/tests -p no:agent_hooks_ctk -m "not draft"
 
   typescript-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.typescript == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -704,6 +765,8 @@ jobs:
         working-directory: sdk/typescript
 
   go-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.go == 'true'
     # The Windows leg builds the ffi crate for x86_64-pc-windows-gnu:
     # cgo links with the GNU toolchain, which cannot consume the
     # msvc-built cdylib (no import library for mingw gcc). The gnu
@@ -753,3 +816,26 @@ jobs:
         env:
           CGO_LDFLAGS: -L${{ github.workspace }}/sdk/rust/target/${{ matrix.target }}/release -lagent_hooks_ffi
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/${{ matrix.target }}/release
+
+  ci:
+    if: always()
+    needs: [changes, spec, schema-lint, conformance-lint, python, typescript, rust, dotnet, go, rust-xplat, dotnet-xplat, draft-vectors, draft-rust, draft-python, draft-typescript, draft-dotnet, draft-go, lint, cargo-deny, python-xplat, typescript-xplat, go-xplat]
+    runs-on: ubuntu-latest
+    env:
+      RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Check blocking job results
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          results = json.loads(os.environ["RESULTS"])
+          blocking = ("changes", "spec", "schema-lint", "conformance-lint",
+                      "python", "typescript", "rust", "dotnet", "go", "cargo-deny")
+          failed = [name for name in blocking if results[name]["result"] not in ("success", "skipped")]
+          if results["changes"]["result"] != "success" or failed:
+              print(f"::error::CI jobs did not succeed: {', '.join(failed)}")
+              sys.exit(1)
+          PY
