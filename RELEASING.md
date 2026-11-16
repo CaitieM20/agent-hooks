@@ -83,9 +83,10 @@ MAJOR for a breaking one. Cut it in one spec-only pull request.
 
    Each suite validates only against its matching schema bundle. SDK
    runners use the released 0.1 suite by default. The advisory
-   `draft-tests` job runs every vector in `conformance/draft/` under the
-   draft, including IDs also present in the released suite, and does not
-   block the required 0.1 SDK checks. A new specification folder or
+   `draft-vectors` job validates every vector in `conformance/draft/`
+   against the draft schemas. Per-SDK advisory `draft-*` jobs run the
+   SDK-specific draft tests. These checks do not block the required 0.1
+   SDK checks. A new specification folder or
    conformance suite passes the released-folder guard if it did not
    exist on `main`; after the merge both are frozen. Only new regular
    `.json` files under the specification folder's

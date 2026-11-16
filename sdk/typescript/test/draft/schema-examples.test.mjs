@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 
-// Advisory (the draft-tests job): these tests copy the draft's schemas and
+// Advisory (the draft-typescript job): these tests copy the draft's schemas and
 // examples as fixtures, so they read draft-only files.
 
 import assert from "node:assert/strict";
