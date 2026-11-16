@@ -137,8 +137,7 @@ jobs:
       - name: Validate schemas are well-formed
         run: |
           set -e
-          # Every specification bundle must compile. Released conformance
-          # schemas compile with their own bundle; draft conformance is
+          # Every specification bundle must compile. Draft conformance is
           # advisory in draft-tests so it can migrate after the spec.
           validated=0
           for spec_dir in spec/*/; do
@@ -151,9 +150,6 @@ jobs:
               exit 1
             fi
             version=$(basename "$spec_dir")
-            if [ "$version" != draft ]; then
-              schemas+=("conformance/$version/vectors.schema.json")
-            fi
             echo "Validating ${#schemas[@]} schemas under $root"
             for f in "${schemas[@]}"; do
               # -r must not include the file under -s (ajv rejects duplicate $id)
@@ -170,6 +166,13 @@ jobs:
             exit 1
           fi
           echo "schemas validated for $validated bundle(s)"
+  conformance-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22" }
+      - run: npm install -g ajv-cli@5.0.0 ajv-formats@3.0.1
       - name: Validate each released conformance suite
         run: |
           set -e
