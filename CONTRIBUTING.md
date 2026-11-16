@@ -104,8 +104,10 @@ it preserves existing draft copies and reports their differences in an
 advisory summary. Commit draft source and generated JSON together, but
 refresh the SDK draft mirror only when its implementation is updated to
 match. When a shape changes, also run
-the `schema-lint` steps from `.github/workflows/ci.yml` (ajv compiles
-every schema and validates the vectors) and the equivalence script
+the `spec` job's source, example and equivalence checks and the
+`schema-lint` steps from `.github/workflows/ci.yml` (ajv compiles every
+schema and validates the vectors). The `schema-drift` workflow checks
+generated draft output and the SDK mirrors. Run the equivalence script
 against `origin/main` to see which instances change verdict.
 
 See [`spec/draft/schema/README.md`](spec/draft/schema/README.md) for the layout and
