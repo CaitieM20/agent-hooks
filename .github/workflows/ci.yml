@@ -108,6 +108,7 @@ jobs:
             cat "$validation" "$structure"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+        working-directory: spec/scripts
       - name: Report schema drift between the latest release and the draft (advisory)
         # The draft is allowed to move away from the release, so this
         # step continues on error; its red result is the signal.
