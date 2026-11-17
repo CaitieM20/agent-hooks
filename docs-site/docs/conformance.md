@@ -11,7 +11,7 @@ The CTK is organized into version-matched suites. Required SDK runs use
 the released 0.1 corpus under `conformance/0.1/vectors/`. The non-blocking
 advisory `draft-vectors` job validates every vector in
 `conformance/draft/vectors/` against the draft schemas, including IDs also
-present in the released suite. Per-SDK advisory `draft-*` jobs run
+present in the released suite. Advisory steps in each SDK job run
 draft-only SDK tests.
 Each vector scripts a scenario against a mocked model and tools: deny
 at each point, transform fold-through and write-back, approval flows

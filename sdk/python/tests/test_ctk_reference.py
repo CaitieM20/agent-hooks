@@ -79,7 +79,7 @@ def test_skip_set_matches_manifest() -> None:
 
 @pytest.mark.draft
 def test_draft_suite_vectors_pass_under_the_draft() -> None:
-    """Advisory (the draft-python job): the full draft suite runs under draft."""
+    """Advisory (the python job draft step): the full draft suite runs under draft."""
     draft = load_vectors(_CONFORMANCE / "draft" / "vectors")
     skipped = set()
     failures = []

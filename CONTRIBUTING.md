@@ -12,8 +12,9 @@
   (rebase merges) and no force pushes. Branch protection should require
   the `ci` aggregate gate alongside the separate schema-drift and CodeQL
   checks. The gate accepts jobs skipped by path filtering, but fails when
-  a blocking job fails or is cancelled. Cross-platform, draft and `lint`
-  jobs remain advisory. Pushes to `main` run every job.
+  a blocking job fails or is cancelled. Cross-platform and `lint` jobs,
+  draft vector validation, and SDK draft test steps remain advisory.
+  Pushes to `main` run every job.
 
 ## What a PR must include
 
@@ -45,9 +46,9 @@
   the 17 draft-only vectors (`introduced_in: draft`) with the reason
   `draft-only vector; see #188`. Those vectors and the SDK tests that
   read draft-only files (the draft's inventories, examples and schemas)
-  run in advisory draft jobs (`draft-vectors` and the per-SDK `draft-*`
-  jobs), never in a required one, so a
-  draft change cannot turn a required check red. Mark such a test the
+  run in the advisory `draft-vectors` job and advisory draft test steps
+  within each SDK job, so a draft test failure cannot turn a required
+  check red. Mark such a test the
   way its suite filters: a `draft_only_` name prefix in Rust
   (`cargo test -- --skip draft_only`), the `draft` pytest marker
   (`-m "not draft"`), a file under `sdk/typescript/test/draft/`,

@@ -4063,7 +4063,7 @@ mod tests {
         }
     }
 
-    /// Advisory (the draft-rust job): the draft's examples.
+    /// Advisory (the rust job draft step): the draft's examples.
     #[test]
     fn draft_only_host_declaration_examples_load() {
         host_declaration_examples_load(&SpecVersion::Draft);
@@ -4732,7 +4732,7 @@ mod tests {
         }
     }
 
-    /// Advisory (the draft-rust job): the draft's record schema.
+    /// Advisory (the rust job draft step): the draft's record schema.
     #[test]
     fn draft_only_mirrored_enums_match_record_schema() {
         mirrored_enums_match_record_schema_of(SpecVersion::Draft);

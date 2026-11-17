@@ -217,7 +217,7 @@ public sealed class DeclarationTests
         ErrorClassesMatchTheInventoryOf("0.1");
     }
 
-    /// <summary>Advisory (the draft-dotnet job): the draft's inventory.</summary>
+    /// <summary>Advisory (the dotnet job draft step): the draft's inventory.</summary>
     [Fact]
     [Trait("Category", "draft")]
     public void DraftOnlyErrorClassesMatchTheInventory()

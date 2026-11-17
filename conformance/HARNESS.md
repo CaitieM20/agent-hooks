@@ -87,7 +87,7 @@ released `agent-hooks/0.1` contract. The separate
 version and is validated by repository CI. The advisory `draft-vectors`
 job validates every vector in `conformance/draft/` against the draft
 schemas, including IDs also present in the released suite. Per-SDK
-advisory `draft-*` jobs run version-boundary and draft-only runtime unit
+advisory steps run version-boundary and draft-only runtime unit
 tests; none blocks the required 0.1 SDK checks. Reference harnesses require
 an explicit specification version;
 their committed declaration/1.0 document names `agent-hooks/0.1`, and

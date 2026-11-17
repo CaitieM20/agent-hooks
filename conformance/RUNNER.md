@@ -89,7 +89,7 @@ Each SDK runner currently loads the released 0.1 suite from
 `conformance/draft/` suite is validated by repository CI. The advisory
 `draft-vectors` job validates every vector in `conformance/draft/` against
 the draft schemas, including IDs also present in the released suite.
-Per-SDK advisory `draft-*` jobs run the draft-only SDK tests. These checks
+Advisory steps in each SDK job run the draft-only SDK tests. These checks
 do not block the required 0.1 SDK checks.
 Each runner has the grouping as a function that takes the
 specification version the claim names and the results:

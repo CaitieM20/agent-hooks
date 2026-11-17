@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 
-// Advisory (the draft-typescript job): the full draft suite runs under the
+// Advisory (the typescript job draft step): the full draft suite runs under the
 // draft. Binding tests to a draft revision is #188.
 
 import { fileURLToPath } from "node:url";
