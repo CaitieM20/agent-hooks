@@ -47,7 +47,8 @@ under the draft). An unknown version is refused as before.
   `AH-CTK-156` and `AH-CTK-158`. The other vectors from `AH-CTK-144`
   to `AH-CTK-160` are draft-only and carry `introduced_in: draft`.
   The full draft suite and the SDK tests that read draft-only spec
-  files run in the advisory `draft-tests` job. A harness names
+  files run in the advisory `draft-vectors` job and advisory steps in
+  each SDK job. A harness names
   the version it builds under (`spec`), the runner skips a draft-only
   vector under a released version with `draft-only vector; see #188`,
   and the reference harnesses take the version in their constructor

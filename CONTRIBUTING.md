@@ -8,9 +8,13 @@
 - **Proposals first** for contract-level changes: see
   [docs/proposals/README.md](docs/proposals/README.md) for the change
   classes that require a written proposal before implementation.
-- **Everything lands by PR.** `main` is protected: required status
-  checks across all five SDKs plus schema-drift and CodeQL, linear
-  history (rebase merges), no force pushes.
+- **Everything lands by PR.** `main` is protected with linear history
+  (rebase merges) and no force pushes. Branch protection should require
+  the `ci` aggregate gate alongside the separate schema-drift and CodeQL
+  checks. The gate accepts jobs skipped by path filtering, but fails when
+  a blocking job fails or is cancelled. Cross-platform and `lint` jobs,
+  draft vector validation, and SDK draft test steps remain advisory.
+  Pushes to `main` run every job.
 
 ## What a PR must include
 
@@ -42,8 +46,9 @@
   the 17 draft-only vectors (`introduced_in: draft`) with the reason
   `draft-only vector; see #188`. Those vectors and the SDK tests that
   read draft-only files (the draft's inventories, examples and schemas)
-  run in the advisory `draft-tests` job, never in a required one, so a
-  draft change cannot turn a required check red. Mark such a test the
+  run in the advisory `draft-vectors` job and advisory draft test steps
+  within each SDK job, so a draft test failure cannot turn a required
+  check red. Mark such a test the
   way its suite filters: a `draft_only_` name prefix in Rust
   (`cargo test -- --skip draft_only`), the `draft` pytest marker
   (`-m "not draft"`), a file under `sdk/typescript/test/draft/`,
@@ -112,8 +117,11 @@ is needed for the split. Every check runs on every pull request.
 Commit draft source and generated JSON together, but
 refresh the SDK draft mirror only when its implementation is updated to
 match. When a shape changes, also run
-the `schema-lint` steps from `.github/workflows/ci.yml` (ajv compiles
-every schema and validates the vectors) and the equivalence script
+the `spec` job's source, example and equivalence checks and the
+`schema-lint` and `conformance-lint` jobs from `.github/workflows/ci.yml`
+(`schema-lint` compiles specification schemas; `conformance-lint` validates
+released vectors). The `schema-drift` workflow checks
+generated draft output and the SDK mirrors. Run the equivalence script
 against `origin/main` to see which instances change verdict.
 
 See [`spec/draft/schema/README.md`](spec/draft/schema/README.md) for the layout and

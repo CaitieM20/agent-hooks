@@ -97,8 +97,8 @@ func TestReferenceHarnessConformance(t *testing.T) {
 	}
 }
 
-// TestDraftSuiteVectorsPassUnderTheDraft is advisory (the draft-tests
-// job): the full draft suite runs under the draft.
+// TestDraftSuiteVectorsPassUnderTheDraft is advisory (the go job draft step):
+// the full draft suite runs under the draft.
 func TestDraftSuiteVectorsPassUnderTheDraft(t *testing.T) {
 	vectors, err := LoadVectors(filepath.Join("..", "..", "..", "conformance", "draft", "vectors"))
 	if err != nil {

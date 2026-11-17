@@ -87,9 +87,10 @@ capability such as `int64_json` is honest surface, not a failure).
 Each SDK runner currently loads the released 0.1 suite from
 `conformance/0.1/vectors/` (or its packaged mirror). The separate
 `conformance/draft/` suite is validated by repository CI. The advisory
-`draft-tests` job runs every vector in `conformance/draft/` under the
-draft, including IDs also present in the released suite, and does not
-block the required 0.1 SDK checks.
+`draft-vectors` job validates every vector in `conformance/draft/` against
+the draft schemas, including IDs also present in the released suite.
+Advisory steps in each SDK job run the draft-only SDK tests. These checks
+do not block the required 0.1 SDK checks.
 Each runner has the grouping as a function that takes the
 specification version the claim names and the results:
 `conformance_report(spec, results)` in Rust and Python,

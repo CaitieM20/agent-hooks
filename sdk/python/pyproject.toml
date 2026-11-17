@@ -69,5 +69,5 @@ warn_unreachable = true
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
 markers = [
-  "draft: runs under agent-hooks/draft or reads draft-only specification files; the advisory draft-tests job runs these and the required jobs skip them (-m 'not draft')",
+  "draft: runs under agent-hooks/draft or reads draft-only specification files; advisory steps run these and released checks skip them (-m 'not draft')",
 ]

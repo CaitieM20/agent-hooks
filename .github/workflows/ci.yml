@@ -14,133 +14,99 @@ permissions:
 # the draft is spec/draft, named where a step reads it alone.
 
 jobs:
-  schema-lint:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      spec: ${{ steps.filter.outputs.spec }}
+      conformance: ${{ steps.filter.outputs.conformance }}
+      rust: ${{ steps.filter.outputs.rust }}
+      python: ${{ steps.filter.outputs.python }}
+      typescript: ${{ steps.filter.outputs.typescript }}
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -eu
+          shared=false spec=false conformance=false rust=false python=false typescript=false dotnet=false go=false
+          if [ "$EVENT_NAME" = push ]; then
+            shared=true
+          else
+            # Compare the checked-out merge commit with the PR base, including
+            # both paths of a rename. Unknown paths conservatively run all jobs.
+            git diff --name-only --no-renames -z "$BASE_SHA" "$GITHUB_SHA" > "$RUNNER_TEMP/changed-paths"
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                spec/*) spec=true ;;
+                conformance/*) conformance=true ;;
+                sdk/rust/*) rust=true ;;
+                sdk/python/*) python=true ;;
+                sdk/typescript/*) typescript=true ;;
+                sdk/dotnet/*) dotnet=true ;;
+                sdk/go/*) go=true ;;
+                *) shared=true ;;
+              esac
+            done < "$RUNNER_TEMP/changed-paths"
+          fi
+          {
+            echo "shared=$shared"
+            echo "spec=$spec"
+            echo "conformance=$conformance"
+            echo "rust=$rust"
+            echo "python=$python"
+            echo "typescript=$typescript"
+            echo "dotnet=$dotnet"
+            echo "go=$go"
+          } >> "$GITHUB_OUTPUT"
+
+  spec:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: "22" }
-      - run: npm install -g ajv-cli@5.0.0 ajv-formats@3.0.1
-      - name: Validate schemas are well-formed
+      - run: npm ci
+        working-directory: spec/scripts
+      - name: Type-check draft schema sources
+        # The required schema-drift workflow regenerates and checks the committed output.
+        run: npx tsc -p ../draft/schema/src/tsconfig.json
+        working-directory: spec/scripts
+      - name: Released schema bundles match their TypeScript source
+        # The frozen source must still generate the frozen output.
         run: |
-          set -e
-          # Every specification bundle must compile. Released conformance
-          # schemas compile with their own bundle; draft conformance is
-          # advisory in draft-tests so it can migrate after the spec.
-          validated=0
-          for spec_dir in spec/*/; do
-            [ -d "${spec_dir}schema" ] || continue
-            root="${spec_dir}schema/generated"
-            [ -d "$root" ] || root="${spec_dir}schema"
-            mapfile -t schemas < <(find "$root" -name '*.schema.json' -not -path '*/src/*' | sort)
-            if [ "${#schemas[@]}" -eq 0 ]; then
-              echo "::error::$root holds no *.schema.json files"
-              exit 1
-            fi
-            version=$(basename "$spec_dir")
-            if [ "$version" != draft ]; then
-              schemas+=("conformance/$version/vectors.schema.json")
-            fi
-            echo "Validating ${#schemas[@]} schemas under $root"
-            for f in "${schemas[@]}"; do
-              # -r must not include the file under -s (ajv rejects duplicate $id)
-              refs=()
-              for r in "${schemas[@]}"; do
-                [ "$r" = "$f" ] || refs+=(-r "$r")
-              done
-              ajv compile --spec=draft2020 -c ajv-formats -s "$f" "${refs[@]}"
-            done
-            validated=$((validated + 1))
+          set -eu
+          version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          checked=0
+          for dir in ../*/; do
+            version=$(basename "$dir")
+            [[ $version =~ $version_pattern ]] || continue
+            echo "Checking spec/$version/schema"
+            npx tsc -p "${dir}schema/src/tsconfig.json"
+            npx tsx generate-schemas.mts --check --spec "$version"
+            checked=$((checked + 1))
           done
-          if [ "$validated" -eq 0 ]; then
-            echo "::error::no spec/*/schema folder found; nothing validated"
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::no released spec/<MAJOR.MINOR>/ folder found"
             exit 1
           fi
-          echo "schemas validated for $validated bundle(s)"
-      - name: Validate each released conformance suite
-        run: |
-          set -e
-          validated=0
-          for spec_dir in spec/*/; do
-            name=$(basename "$spec_dir")
-            [ "$name" != draft ] || continue
-            suite="conformance/$name"
-            root="${spec_dir}schema/generated"
-            [ -d "$root" ] || root="${spec_dir}schema"
-            [ -d "$root" ] || continue
-            if [ ! -f "$suite/vectors.schema.json" ] || [ ! -d "$suite/vectors" ]; then
-              echo "::error::missing released suite at $suite"
-              exit 1
-            fi
-            count=$(find "$suite/vectors" -maxdepth 1 -name 'AH-CTK-*.json' | wc -l)
-            if [ "$count" -eq 0 ]; then
-              echo "::error::$suite/vectors contains no vectors"
-              exit 1
-            fi
-            mapfile -t refs < <(find "$root" -name '*.schema.json' -not -path '*/src/*' | sort | sed 's/^/-r=/')
-            echo "Validating $suite/vectors against $root"
-            ajv validate --spec=draft2020 -c ajv-formats \
-              -s "$suite/vectors.schema.json" "${refs[@]}" \
-              -d "$suite/vectors/*.json"
-            validated=$((validated + 1))
-          done
-          if [ "$validated" -eq 0 ]; then
-            echo "::error::no released conformance suites were validated"
-            exit 1
-          fi
-          echo "released conformance suites validated: $validated"
-
-  python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with: { python-version: "3.12" }
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with: { toolchain: stable }
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      - name: Install locked dependencies, then the package itself
-        # requirements-dev.lock pins every transitive dep including the
-        # maturin build backend (uv pip compile); --no-build-isolation
-        # makes the editable install use that pinned maturin instead of
-        # fetching a floating one, and [tool.maturin] locked=true pins
-        # the Rust side via Cargo.lock.
-        run: |
-          uv pip install --system -r sdk/python/requirements-dev.lock
-          uv pip install --system --no-deps --no-build-isolation -e ./sdk/python
-      - run: ruff format --check sdk/python scripts && ruff check sdk/python scripts
-      # The required set: the tests marked draft run in draft-tests.
-      - run: pytest sdk/python/tests -p no:agent_hooks_ctk -m "not draft" -v
-
-  typescript:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with: { toolchain: stable }
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with: { node-version: "22" }
-      - run: npm ci
-        working-directory: sdk/typescript
-      - run: npm ci
+          echo "checked $checked released bundle(s)"
         working-directory: spec/scripts
       - name: Schema examples match their JSON Schemas (every bundle)
         run: node check-schema-examples.mjs
         working-directory: spec/scripts
       - name: Compare the latest release schemas with the draft
-        # Differential validation (the tool exits 1 when the two sets
-        # judge an instance differently) and a structural diff of the
-        # newest spec/<MAJOR.MINOR>/ schema set (schema/generated/ when
-        # present, else schema/) against the draft, as two runs. The two
-        # sets are two specification versions with their own wire
-        # strings, so each side reads a `spec` member as its own
-        # (--wire-old, --wire-new): the instances that differ by that
-        # member alone are reported on their own line, not counted as
-        # disagreements or narrowing. This step gates the tool's health
-        # only: it fails when no release folder exists, when a run
-        # crashes, or when a report lacks its summary lines. The drift
-        # verdict itself is the next step's, which may fail without
-        # failing the job.
+        # Differential validation and a structural diff report schema drift.
+        # This step gates the tool's health only; the verdict itself is advisory.
         id: drift
         run: |
           set -u
@@ -150,7 +116,6 @@ jobs:
             echo "::error::no released spec/<MAJOR.MINOR>/ folder to compare with the draft"
             exit 1
           fi
-          # The tool reads schema/generated/ when a bundle has it, else schema/.
           old="../$version/schema"
           new="../draft/schema/generated"
           wires=(--wire-old "agent-hooks/$version" --wire-new agent-hooks/draft)
@@ -201,8 +166,7 @@ jobs:
         working-directory: spec/scripts
       - name: Report schema drift between the latest release and the draft (advisory)
         # The draft is allowed to move away from the release, so this
-        # step continues on error; its red result is the signal, and
-        # the numbers come from the gated step above.
+        # step continues on error; its red result is the signal.
         continue-on-error: true
         env:
           VERSION: ${{ steps.drift.outputs.version }}
@@ -217,38 +181,214 @@ jobs:
             echo "::warning::the draft schemas drift from the $VERSION release: $DISAGREEMENTS instance(s) judged differently ($NARROWED narrowed; $SPEC_ONLY more by the spec member alone, not counted), $DIFFERING differing path(s); see the job summary"
             exit 1
           fi
+
+  schema-lint:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22" }
+      - run: npm install -g ajv-cli@5.0.0 ajv-formats@3.0.1
+      - name: Validate schemas are well-formed
+        run: |
+          set -e
+          # Every specification bundle must compile. Draft conformance is
+          # advisory in draft-vectors so it can migrate after the spec.
+          validated=0
+          for spec_dir in spec/*/; do
+            [ -d "${spec_dir}schema" ] || continue
+            root="${spec_dir}schema/generated"
+            [ -d "$root" ] || root="${spec_dir}schema"
+            mapfile -t schemas < <(find "$root" -name '*.schema.json' -not -path '*/src/*' | sort)
+            if [ "${#schemas[@]}" -eq 0 ]; then
+              echo "::error::$root holds no *.schema.json files"
+              exit 1
+            fi
+            echo "Validating ${#schemas[@]} schemas under $root"
+            for f in "${schemas[@]}"; do
+              # -r must not include the file under -s (ajv rejects duplicate $id)
+              refs=()
+              for r in "${schemas[@]}"; do
+                [ "$r" = "$f" ] || refs+=(-r "$r")
+              done
+              ajv compile --spec=draft2020 -c ajv-formats -s "$f" "${refs[@]}"
+            done
+            validated=$((validated + 1))
+          done
+          if [ "$validated" -eq 0 ]; then
+            echo "::error::no spec/*/schema folder found; nothing validated"
+            exit 1
+          fi
+          echo "schemas validated for $validated bundle(s)"
+  conformance-lint:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22" }
+      - run: npm install -g ajv-cli@5.0.0 ajv-formats@3.0.1
+      - name: Validate each released conformance suite
+        run: |
+          set -e
+          validated=0
+          for spec_dir in spec/*/; do
+            name=$(basename "$spec_dir")
+            [ "$name" != draft ] || continue
+            suite="conformance/$name"
+            root="${spec_dir}schema/generated"
+            [ -d "$root" ] || root="${spec_dir}schema"
+            [ -d "$root" ] || continue
+            if [ ! -f "$suite/vectors.schema.json" ] || [ ! -d "$suite/vectors" ]; then
+              echo "::error::missing released suite at $suite"
+              exit 1
+            fi
+            count=$(find "$suite/vectors" -maxdepth 1 -name 'AH-CTK-*.json' | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "::error::$suite/vectors contains no vectors"
+              exit 1
+            fi
+            mapfile -t refs < <(find "$root" -name '*.schema.json' -not -path '*/src/*' | sort | sed 's/^/-r=/')
+            echo "Validating $suite/vectors against $root"
+            ajv validate --spec=draft2020 -c ajv-formats \
+              -s "$suite/vectors.schema.json" "${refs[@]}" \
+              -d "$suite/vectors/*.json"
+            validated=$((validated + 1))
+          done
+          if [ "$validated" -eq 0 ]; then
+            echo "::error::no released conformance suites were validated"
+            exit 1
+          fi
+          echo "released conformance suites validated: $validated"
+
+  python:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with: { toolchain: stable }
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Install locked dependencies, then the package itself
+        id: draft_ready
+        # requirements-dev.lock pins every transitive dep including the
+        # maturin build backend (uv pip compile); --no-build-isolation
+        # makes the editable install use that pinned maturin instead of
+        # fetching a floating one, and [tool.maturin] locked=true pins
+        # the Rust side via Cargo.lock.
+        run: |
+          uv pip install --system -r sdk/python/requirements-dev.lock
+          uv pip install --system --no-deps --no-build-isolation -e ./sdk/python
+      - run: ruff format --check sdk/python scripts && ruff check sdk/python scripts
+      - run: pytest sdk/python/tests -p no:agent_hooks_ctk -m "not draft" -v
+
+      - name: Python draft suite tests (advisory)
+        id: draft
+        if: ${{ !cancelled() && steps.draft_ready.outcome == 'success' }}
+        continue-on-error: true
+        run: pytest sdk/python/tests -p no:agent_hooks_ctk -m draft -v
+      - name: Report Python draft tests
+        if: ${{ !cancelled() && (steps.draft.outcome == 'success' || steps.draft.outcome == 'failure') }}
+        continue-on-error: true
+        env:
+          OUTCOME: ${{ steps.draft.outcome }}
+        run: |
+          echo "## Python draft tests (advisory): $OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != success ]; then
+            echo "::warning::Python draft tests failed; see the job summary (non-blocking)"
+          fi
+
+  typescript:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.typescript == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with: { toolchain: stable }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "22" }
+      - run: npm ci
+        working-directory: sdk/typescript
+      # SDK tests import the spec tooling directly and resolve its own dependencies.
+      - run: npm ci
+        working-directory: spec/scripts
       - run: cargo fetch --locked
         # napi-cli does not forward --locked; fetching first pins the
         # graph, and the build below resolves offline-consistent.
         working-directory: sdk/typescript
       - run: npm run build:native:debug
         working-directory: sdk/typescript
+      - run: npx tsc
+        id: draft_ready
+        working-directory: sdk/typescript
       - name: Generated-binding drift (mirrors schema-drift)
         run: git diff --exit-code -- binding.js binding.d.ts
         working-directory: sdk/typescript
-      - run: npx tsc
-        working-directory: sdk/typescript
       # All test files, never an allowlist: the emitter suite shipped
       # ~100 tests before first running in CI because this line named
-      # two files. test/draft/ is the advisory set, run in draft-tests.
+      # two files. test/draft/ is the advisory set below.
       - run: node --test test/*.mjs
         working-directory: sdk/typescript
+      - name: TypeScript draft suite tests (advisory)
+        id: draft
+        if: ${{ !cancelled() && steps.draft_ready.outcome == 'success' }}
+        continue-on-error: true
+        run: node --test test/draft/*.mjs
+        working-directory: sdk/typescript
+      - name: Report TypeScript draft tests
+        if: ${{ !cancelled() && (steps.draft.outcome == 'success' || steps.draft.outcome == 'failure') }}
+        continue-on-error: true
+        env:
+          OUTCOME: ${{ steps.draft.outcome }}
+        run: |
+          echo "## TypeScript draft tests (advisory): $OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != success ]; then
+            echo "::warning::TypeScript draft tests failed; see the job summary (non-blocking)"
+          fi
 
   rust:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        id: draft_ready
         with: { toolchain: stable, components: "clippy, rustfmt" }
       - run: cargo fmt --all --check
         working-directory: sdk/rust
       - run: cargo clippy --locked --workspace --all-features -- -D warnings
         working-directory: sdk/rust
-      # Both draft_only_* and draft_suite* tests run in draft-tests.
       - run: cargo test --locked --workspace --all-features -- --skip draft_
         working-directory: sdk/rust
 
+      - name: Rust draft suite tests (advisory)
+        id: draft
+        if: ${{ !cancelled() && steps.draft_ready.outcome == 'success' }}
+        continue-on-error: true
+        run: cargo test --locked --workspace --all-features -- draft_
+        working-directory: sdk/rust
+      - name: Report Rust draft tests
+        if: ${{ !cancelled() && (steps.draft.outcome == 'success' || steps.draft.outcome == 'failure') }}
+        continue-on-error: true
+        env:
+          OUTCOME: ${{ steps.draft.outcome }}
+        run: |
+          echo "## Rust draft tests (advisory): $OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != success ]; then
+            echo "::warning::Rust draft tests failed; see the job summary (non-blocking)"
+          fi
+
   dotnet:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.dotnet == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -260,19 +400,40 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with: { dotnet-version: "8.0.x" }
       - run: dotnet restore --locked-mode
+        id: draft_ready
         working-directory: sdk/dotnet
       - run: dotnet format --no-restore --verify-no-changes
         working-directory: sdk/dotnet
       - run: dotnet build --no-restore -warnaserror
         working-directory: sdk/dotnet
       - name: Test (golden identity)
-        # The required set: the Category=draft tests run in draft-tests.
         run: dotnet test test/AgentHooks.Tests/ --nologo --filter "Category!=draft"
         working-directory: sdk/dotnet
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
 
+      - name: .NET draft suite tests (advisory)
+        id: draft
+        if: ${{ !cancelled() && steps.draft_ready.outcome == 'success' }}
+        continue-on-error: true
+        run: dotnet test test/AgentHooks.Tests/ --nologo --filter "Category=draft"
+        working-directory: sdk/dotnet
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
+      - name: Report .NET draft tests
+        if: ${{ !cancelled() && (steps.draft.outcome == 'success' || steps.draft.outcome == 'failure') }}
+        continue-on-error: true
+        env:
+          OUTCOME: ${{ steps.draft.outcome }}
+        run: |
+          echo "## .NET draft tests (advisory): $OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != success ]; then
+            echo "::warning::.NET draft tests failed; see the job summary (non-blocking)"
+          fi
+
   go:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -282,23 +443,45 @@ jobs:
         run: cargo build --locked -p agent-hooks-ffi --release
         working-directory: sdk/rust
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: draft_ready
         with: { go-version: "1.22" }
       - name: Build and test
         run: |
           test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::gofmt violations"; exit 1; }
           go build ./...
           go vet ./...
-          # The required set: the TestDraftSuite* tests run in draft-tests.
           go test ./... -skip 'DraftSuite' -v
         working-directory: sdk/go
         env:
           CGO_LDFLAGS: -L${{ github.workspace }}/sdk/rust/target/release -lagent_hooks_ffi
           LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
 
+      - name: Go draft suite tests (advisory)
+        id: draft
+        if: ${{ !cancelled() && steps.draft_ready.outcome == 'success' }}
+        continue-on-error: true
+        run: go test ./... -run 'DraftSuite' -v
+        working-directory: sdk/go
+        env:
+          CGO_LDFLAGS: -L${{ github.workspace }}/sdk/rust/target/release -lagent_hooks_ffi
+          LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
+      - name: Report Go draft tests
+        if: ${{ !cancelled() && (steps.draft.outcome == 'success' || steps.draft.outcome == 'failure') }}
+        continue-on-error: true
+        env:
+          OUTCOME: ${{ steps.draft.outcome }}
+        run: |
+          echo "## Go draft tests (advisory): $OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != success ]; then
+            echo "::warning::Go draft tests failed; see the job summary (non-blocking)"
+          fi
+
   # Cross-platform build+test of the core and one FFI consumer
   # Advisory: not in the required-check set yet — required
   # names must be stable and always-reporting (see CONTRIBUTING.md).
   rust-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -312,6 +495,8 @@ jobs:
         working-directory: sdk/rust
 
   dotnet-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.dotnet == 'true'
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -355,14 +540,11 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/${{ env.FFI_NATIVE_DIR }}
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/${{ env.FFI_NATIVE_DIR }}
 
-  # The advisory `draft-tests` job runs every vector in
-  # `conformance/draft/` under the draft, including IDs also present in
-  # the released suite, and does not block the required 0.1 SDK checks.
-  # It also runs SDK tests that read draft-only files (the draft's
-  # inventories, examples and schemas). Every step continues on error
-  # and the last step writes the outcomes to the step summary. Binding
-  # tests to a draft revision is #188.
-  draft-tests:
+  # Draft vectors and SDK draft tests are advisory; binding tests to a
+  # draft revision is #188.
+  draft-vectors:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,18 +552,12 @@ jobs:
         with: { node-version: "22" }
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with: { python-version: "3.12" }
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with: { toolchain: stable }
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with: { dotnet-version: "8.0.x" }
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with: { go-version: "1.22" }
       - name: Draft suite vectors validate against the draft schemas
         id: vectors
         continue-on-error: true
         run: |
           set -eu
+          npm install -g ajv-cli@5.0.0 ajv-formats@3.0.1
           npm install -g ajv-cli@5.0.0 ajv-formats@3.0.1
           mapfile -t vectors < <(python3 scripts/vectors-for-bundle.py list draft)
           mapfile -t refs < <(find spec/draft/schema/generated -name '*.schema.json' -not -path '*/src/*' | sort | sed 's/^/-r=/')
@@ -389,87 +565,28 @@ jobs:
           for v in "${vectors[@]}"; do data+=(-d "$v"); done
           ajv validate --spec=draft2020 -c ajv-formats -s conformance/draft/vectors.schema.json "${refs[@]}" "${data[@]}"
           echo "validated ${#vectors[@]} draft vectors against spec/draft"
-      - name: Rust draft suite tests
-        id: rust
-        continue-on-error: true
-        run: cargo test --locked --workspace --all-features -- draft_
-        working-directory: sdk/rust
-      - name: Build ffi cdylib
-        id: ffi
-        continue-on-error: true
-        run: cargo build --locked -p agent-hooks-ffi --release
-        working-directory: sdk/rust
-      - name: Python draft suite tests
-        id: python
-        continue-on-error: true
-        run: |
-          uv pip install --system -r sdk/python/requirements-dev.lock
-          uv pip install --system --no-deps --no-build-isolation -e ./sdk/python
-          pytest sdk/python/tests -p no:agent_hooks_ctk -m draft -v
-      - name: TypeScript draft suite tests
-        id: typescript
-        continue-on-error: true
-        run: |
-          npm ci
-          npm ci --prefix ../../spec/scripts
-          cargo fetch --locked
-          npm run build:native:debug
-          npx tsc
-          node --test test/draft/*.mjs
-        working-directory: sdk/typescript
-      - name: .NET draft suite tests
-        id: dotnet
-        continue-on-error: true
-        run: |
-          dotnet restore --locked-mode
-          dotnet test test/AgentHooks.Tests/ --nologo --filter "Category=draft"
-        working-directory: sdk/dotnet
-        env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
-      - name: Go draft suite tests
-        id: go
-        continue-on-error: true
-        run: go test ./... -run 'DraftSuite' -v
-        working-directory: sdk/go
-        env:
-          CGO_LDFLAGS: -L${{ github.workspace }}/sdk/rust/target/release -lagent_hooks_ffi
-          LD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/release
       - name: Summary
         env:
           VECTORS: ${{ steps.vectors.outcome }}
-          RUST: ${{ steps.rust.outcome }}
-          FFI: ${{ steps.ffi.outcome }}
-          PYTHON: ${{ steps.python.outcome }}
-          TYPESCRIPT: ${{ steps.typescript.outcome }}
-          DOTNET: ${{ steps.dotnet.outcome }}
-          GO: ${{ steps.go.outcome }}
         run: |
           {
-            echo "## Draft suite tests (advisory)"
-            echo "Every vector in the working test set for the next specification version runs under draft, alongside SDK tests that read draft-only files. Not required; see #188."
+            echo "## Draft conformance vectors (advisory)"
+            echo "Every vector in conformance/draft/ is validated against the draft schemas."
             echo
-            echo "| Step | Outcome |"
+            echo "| Check | Outcome |"
             echo "| --- | --- |"
-            echo "| Draft suite vectors against the draft schemas | $VECTORS |"
-            echo "| Rust draft_* tests | $RUST |"
-            echo "| FFI build for .NET and Go | $FFI |"
-            echo "| Python draft tests | $PYTHON |"
-            echo "| TypeScript test/draft | $TYPESCRIPT |"
-            echo "| .NET Category=draft tests | $DOTNET |"
-            echo "| Go draft suite tests | $GO |"
+            echo "| Draft suite vectors | $VECTORS |"
           } >> "$GITHUB_STEP_SUMMARY"
-          for outcome in "$VECTORS" "$RUST" "$FFI" "$PYTHON" "$TYPESCRIPT" "$DOTNET" "$GO"; do
-            if [ "$outcome" != "success" ]; then
-              echo "::warning::a draft advisory step did not succeed; see the job summary (non-blocking)"
-              break
-            fi
-          done
+          if [ "$VECTORS" != "success" ]; then
+            echo "::warning::draft conformance vector validation failed; see the job summary (non-blocking)"
+          fi
 
   # Workflow files were ungated until a duplicate mapping key invalidated
   # release.yml for every event (PR #25) — actionlint gates them now, and
   # the version surfaces are checked for agreement (VERSIONING.md).
   # Advisory: not in the required-check set yet (names must prove stable).
   lint:
+    needs: [changes]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -488,42 +605,15 @@ jobs:
         run: python3 scripts/check-spec-versions.py
       - name: Repository script regression tests
         run: python3 -m unittest discover -s scripts -p "test_*.py" -v
-      - run: npm ci
-        working-directory: spec/scripts
-      - name: Committed JSON Schemas match their TypeScript source
-        # Type-checks spec/draft/schema/src, regenerates to memory and compares
-        # with the committed files (spec/scripts/generate-schemas.mts).
-        run: npm run check:schema
-        working-directory: spec/scripts
-      - name: Released schema bundles match their TypeScript source
-        # The same check for every spec/<MAJOR.MINOR>/ bundle: the frozen
-        # source must still generate the frozen output.
-        run: |
-          set -eu
-          version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-          checked=0
-          for dir in ../*/; do
-            version=$(basename "$dir")
-            [[ $version =~ $version_pattern ]] || continue
-            echo "Checking spec/$version/schema"
-            npx tsc -p "${dir}schema/src/tsconfig.json"
-            npx tsx generate-schemas.mts --check --spec "$version"
-            checked=$((checked + 1))
-          done
-          if [ "$checked" -eq 0 ]; then
-            echo "::error::no released spec/<MAJOR.MINOR>/ folder found"
-            exit 1
-          fi
-          echo "checked $checked released bundle(s)"
-        working-directory: spec/scripts
       - name: Source files carry the standard file header
         run: python3 scripts/check-file-headers.py
-
   # Dependency advisories, license allowlist, bans and source checks for
   # every cargo root. deny.toml at the repository root governs
   # all three; the vendored JCS serializer's one retained dependency
   # (ryu-js) is covered like every other node.
   cargo-deny:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true' || needs.changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -539,6 +629,8 @@ jobs:
           done
 
   python-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -561,6 +653,8 @@ jobs:
           pytest sdk/python/tests -p no:agent_hooks_ctk -m "not draft"
 
   typescript-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.typescript == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -587,6 +681,8 @@ jobs:
         working-directory: sdk/typescript
 
   go-xplat:
+    needs: [changes]
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.spec == 'true' || needs.changes.outputs.conformance == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.go == 'true'
     # The Windows leg builds the ffi crate for x86_64-pc-windows-gnu:
     # cgo links with the GNU toolchain, which cannot consume the
     # msvc-built cdylib (no import library for mingw gcc). The gnu
@@ -636,3 +732,26 @@ jobs:
         env:
           CGO_LDFLAGS: -L${{ github.workspace }}/sdk/rust/target/${{ matrix.target }}/release -lagent_hooks_ffi
           DYLD_LIBRARY_PATH: ${{ github.workspace }}/sdk/rust/target/${{ matrix.target }}/release
+
+  ci:
+    if: always()
+    needs: [changes, spec, schema-lint, conformance-lint, python, typescript, rust, dotnet, go, rust-xplat, dotnet-xplat, draft-vectors, lint, cargo-deny, python-xplat, typescript-xplat, go-xplat]
+    runs-on: ubuntu-latest
+    env:
+      RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Check blocking job results
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          results = json.loads(os.environ["RESULTS"])
+          blocking = ("changes", "spec", "schema-lint", "conformance-lint",
+                      "python", "typescript", "rust", "dotnet", "go", "cargo-deny")
+          failed = [name for name in blocking if results[name]["result"] not in ("success", "skipped")]
+          if results["changes"]["result"] != "success" or failed:
+              print(f"::error::CI jobs did not succeed: {', '.join(failed)}")
+              sys.exit(1)
+          PY
