@@ -206,7 +206,6 @@ jobs:
               echo "::error::$root holds no *.schema.json files"
               exit 1
             fi
-            version=$(basename "$spec_dir")
             echo "Validating ${#schemas[@]} schemas under $root"
             for f in "${schemas[@]}"; do
               # -r must not include the file under -s (ajv rejects duplicate $id)
