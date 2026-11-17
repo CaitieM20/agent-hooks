@@ -7,9 +7,11 @@
 
 ## Abstract
 
-Each `HooksRequest` includes common context metadata in addition to the Per Hook specific data. The current contract defines fields that cannot always be populated with meaningful data. For instance an AI Gateway doesn't know what agent framework is making the request or what sequence in the agent's execution the request belongs to. 
+Each `HooksRequest` includes `ContextMetadata`in addition to the Per Hook specific data. The current contract defines fields that cannot always be populated with meaningful data. For instance an AI Gateway doesn't know what agent framework is making the request or what sequence in the agent's execution the request belongs to. 
 
 This proposal re-evaluates the common set of context fields required across hooks, based on feedback from early implementations. The goal is to get to a common core that contains meaningful data that can consistently be set at multiple layers of the stack (harness, agent runtime, AI Gateway).
+
+Additionally this proposal moves identity fields to a separate `IdentityContext` object.
 
 ## The gap (Motivation)
 
@@ -20,16 +22,19 @@ AI Gateways.
 
 Today implementors populate the required fields with garbage or meaningless values. Given the unreliability of these fields hook implementors cannot rely on them to make decisions. This either leads to Hook implementations that work inconsistently across surfaces, or passing fields that are commonly ignored.
 
-## Goals and non-goals (optional)
+Today identity data like `agent.id` and `tenant.id` is part of the common `ContextMetadata`. This implies that the same identity fields are available to hook implementers as ordinary request metadata, rather than as a separate identity context, and should be handled with the same level of trust. 
 
-{State the intended outcomes and explicit boundaries. Identify what
-stays unchanged, especially trust assumptions and host/provider concerns
-outside the Agent Hooks contract.}
+We propose making established agent and tenant identity available to hook implementers
+through a separate, optional identity context, with the same semantics for local
+and remote execution. Hook Implementors are responsible for ensuring this data gets populated from trustworthy sources, before the hook is invoked. 
 
 ## Specification
 
-Today the specification currently defines required & optional fields in 4.1. The table below describes whether we should keep, remove or update these fields, and the rationale why.
+Section 4.1 defines required and optional context fields. The table below
+describes the proposed disposition of each field. In the current draft,
+`agent.id` is required; `tenant.*` and `actor.*` are already optional.
 
+This proposal takes the existing `Context Metadata` fields and proposes which fields to keep, remove, or move to a separate identity context. The below table gives a high level overview. 
 
 | Field | Continue to Support | Rationale |
 | ---  | --- | --- |
@@ -37,7 +42,7 @@ Today the specification currently defines required & optional fields in 4.1. The
 | `interception_point` | Keep | Identifies the hook interception point; necessary for remote hook execution. |
 | `timestamp` | Keep | Identifies when the context was created. |
 | `sequence` | Remove | May be known at the harness, but cannot be known at other execution layers. Moreover this is creating a false session, which should not be relied upon. | 
-| `agent.id` | Unknown  | This represents the agent Id, however this data alone can't be trusted and needs to be verified by some other form of auth. |
+| `agent.id` | Move to a separate, optional identity context | Expose the established agent/workload security principal when available. This is different from today's stable agent-definition identifier; do not silently reinterpret that identifier as authenticated identity. Ordinary request metadata is not proof of identity. |
 | `agent.framework` | Update | This field is meant to identify the runtime invoking the hook. This may be an agent harness, gateway, or agent runtime layer |
 | `agent.name` | Remove | This field doesn't make sense outside the context of an agent harness |
 | `agent.version` | Update | This field is meant to identify the version of the runtime invoking the hook, this may be an agent, harness, gateway, or agent runtime layer |
@@ -45,119 +50,228 @@ Today the specification currently defines required & optional fields in 4.1. The
 | `session.started_at` | Remove | same issues as session id. | 
 |`session.turn` | Remove | same issue as session id. |
 | `trace.trace_id`, `trace.span_id` | Keep | support distributed tracing across execution layers is useful especially in remote. |
-|`tenant.id`, `tenant.name` | Remove | this information is unreliable, as the tenant information needs to be independently verified by some form of authentication token |
-|`actor.id`, `actor.kind` | Remove | unclear on how to consistently set these |
+|`tenant.id`, `tenant.name` | Move tenant identity out of `HooksRequest` | Expose an established, scoped tenant identifier through the optional identity context. Tenancy is vendor-neutral, but its mapping is provider/profile-specific. A display name is not an authorization identifier. |
+|`actor.id`, `actor.kind` | Remove | Caller authentication belongs to the transport's admission policy, not the hook's agent identity. Delegation, when needed to establish agent identity, is validated through an authentication profile rather than a generic hook actor field. |
 | `budgets.tool_call_count`, `budgets.token_count`, `budgets.elapsed_seconds`, `budgets.cost_usd` | keep or make extension... | This should move to an extension, having these as optional makes it difficult for hook implementors to rely on them consistently|
 
+## Schema Changes
 
-### Recommended normative semantics
+Each `HooksRequest` extends `ContextMetadata`. The `ContextMetadata` object will be updated to reflect the field changes described above.
+```typespec
+interface ContextMetadata {
+  spec: "agent-hooks/draft";
+  /** @format date-time */
+  timestamp: string
+  agent: {
+    /** @minLength 1 */
+    id: string;
+    /** @pattern ^[a-z0-9_-]+$ */
+    framework: string;
+    name?: string;
+    version?: string;
+  };
+  trace?: {
+    trace_id?: string;
+    span_id?: string;
+  };
+  budgets?: {
+    /** @TJS-type number */
+    tool_call_count?: number;
+    /** @TJS-type number */
+    token_count?: number;
+    /** @TJS-type number */
+    elapsed_seconds?: number;
+    /** @TJS-type number */
+    cost_usd?: number;
+  };
+}
+```
 
-{For contract changes, describe the recommended syntax and behavior in
-enough detail for interoperable implementations. Distinguish proposed
-requirements from examples and rationale. Include defaults, precedence,
-validation/rejection rules, error reasons, limits, and observable results
-where relevant. Identify affected spec sections and unchanged invariants.
-For a non-contract question, replace this section with the proposed
-procedure or design.}
+Additionally we will add a new `IdentityContext` object to `HooksRequest` to carry the established agent and tenant identities.
 
-{Explain interactions with interception points, verdicts, composition,
-approval, identity, records, and declarations only where affected. State
-which behavior belongs to the host, interceptor, resolver, or provider.}
+```typespec
+interface IdentityContext {
+  /** Established agent/workload principal, not a logical agent or gateway. */
+  agent?: {...};
+  /** Established tenancy reference with a documented issuer/profile mapping. */
+  tenant?: {...};
+}
+// Both members are independently optional; an empty context is valid.
+// Only a trusted producer establishes and binds this context to an invocation.
+// Missing identity stays absent; request JSON does not establish identity.
+```
 
-### Schema and wire impact (when applicable)
+The `HooksRequest` object now looks as follows:
+```typespec
+interface HooksRequest extends ContextMetadata {
+  interception_point: InterceptionPoint;
+  identity_context?: IdentityContext;
+  extensions?: Extensions;
+}
+```
 
-{List changed or new schema files and closed inventories under spec/.
-Show illustrative wire examples if useful, clearly labeled as proposed.
-Identify constraints requiring SDK validation rather than JSON Schema.
-Link authoritative schema files once they exist instead of maintaining
-duplicate adopted schemas here.}
+### IdentityContext
+Hooks may need to evaluate an action in the context of the established agent and tenant identities. The IdentityContext object provides a common datastructure to carry the identifiers. It MUST NOT be treated as proof of identity based solely on request JSON.
+
+| Identity member | Meaning | Availability |
+| --- | --- | --- |
+| `agent` | The established agent/workload security principal whose action is being evaluated.| Optional. |
+| `tenant` | An established tenancy/security-partition identifier, scoped according to its identity profile. | Optional, independently of `agent`. |
+
+**Open Question: Should we include Tenant. Is this generic enough or specific to Microsoft.**
+
+
+The below table describes how a local vs a remote implementation of an agent hook may populate the `IdentityContext` object.
+
+| Member | Authority | Local basis (example) | Remote basis (example) |
+| --- | --- | --- | --- |
+| `agent` | The identity system that issued or registered the agent principal, such as an OAuth/OIDC issuer, workload identity issuer, or agent directory. | The host's configured agent registration, or a credential the host already validated. | A validated token whose issuer (`iss`) qualifies its subject (`sub`) when the profile defines that subject as an agent, or a SPIFFE ID, which includes its trust domain. |
+| `tenant` | The system that assigns or attests tenancy, such as a directory, identity provider, or platform account system, as defined by the identity profile. The authority is not itself the tenant, and one authority can attest many tenants. | Host tenant configuration or an authenticated session. | A tenant claim defined by the accepted profile, from an issuer trusted to assert that tenant. |
+
+### Remote Call Implications
+The following remote exchange is illustrative only; it is not proposed syntax.
+The identity evidence travels in the transport, and the request body carries
+action data without an identity member:
+
+```http
+POST /hooks/evaluate HTTP/1.1
+Host: hooks.example.com
+Authorization: Bearer <access token issued for this hook service's audience>
+Content-Type: application/json
+
+{ ...HooksRequest: action data only, no identity member... }
+```
+
+The receiving adapter validates the token according to its profile (issuer,
+signature, audience, lifetime, and any sender binding). It applies the
+profile's agent and tenant mappings, constructs a new identity context, and
+invokes `evaluate(hook_request, identity_context)`. An in-process host
+constructs the same conceptual context from identity it has already
+established, without an artificial network credential.
+
 
 ## Rationale
 
-Explain why particular design decisions were made. This section should:
-
-- Describe alternate designs that were considered
-- Explain why the proposed approach was chosen
-- Reference related work or prior art
-- Document important objections or concerns raised during discussion
-- Provide evidence of consensus within the community
+Hook policy should have a common way to consume available agent and tenant
+identity without every hook becoming an authentication implementation.
+Separating trusted construction from policy consumption supports harnesses,
+agent runtimes, and gateways without pretending they all know the same facts.
+It also avoids confusing a service's authenticated network caller with the agent
+whose action is under evaluation.
 
 ### Options considered
 
-#### A. Keep the current contract
+#### A. Keep identity metadata, possibly as advisory hints
 
-{Describe the status quo and how hosts handle the gap today.}
+Keeping existing fields is inexpensive for hosts and hooks; making them optional
+and explicitly unverified avoids forcing invented values. Hints can support
+correlation at any layer, but have no independent verifier and can be spoofed.
+They cannot serve as authentication or authorization evidence, and logging
+them still creates privacy risks. This does not satisfy identity-aware policy.
 
-| Advantages | Costs and risks |
-| --- | --- |
-| {What this preserves or avoids.} | {What remains unsolved or moves to hosts.} |
+#### B. Rely entirely on transport authentication or local host trust
 
-#### B. {Alternative}
+A remote service authenticates credentials issued by a configured authorization
+server or CA; local hooks rely on trusted registration and host state.
+This keeps authentication out of the request and minimizes hook-specific work.
+Audience/lifetime restrictions and credential protection remain necessary,
+especially for bearer tokens. However, it supplies no common identity interface
+to hooks, and an authenticated runtime or gateway does not necessarily identify
+the agent or tenant behind it.
 
-{Describe a viable alternative with enough detail for a fair comparison.}
+#### C. Put an opaque credential in every identity-bearing request
 
-| Advantages | Costs and risks |
-| --- | --- |
-| {Benefit.} | {Trade-off, limitation, or failure mode.} |
+A token service could issue a credential that each hook verifies.
+[OAuth Token Exchange, RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html)
+supports subject/actor delegation. The
+[OAuth Transaction Tokens draft](https://www.ietf.org/archive/id/draft-ietf-oauth-transaction-tokens-11.html)
+explores short-lived identity and authorization context across a call chain
+within a trust domain; it is work in progress, not an adopted dependency here.
 
-<!-- Add further lettered options as needed. Present alternatives
-neutrally; do not make a preferred option look inevitable. -->
+This can propagate evidence across layers, but burdens consumers with
+verification and key/issuer configuration. Putting credentials in ordinary
+hook data also increases exposure through copies, logs, and forwarding.
+Signatures do not provide confidentiality or prevent bearer replay.
+Prefer verification in a trusted adapter, with hook-appropriate audiences and
+normalized identity passed to policy code, rather than a token field in
+`HooksRequest`.
+
+#### D. Separate identity context with optional authentication
+
+Trusted local providers and receiving remote adapters establish the same
+conceptual agent/tenant context. Hooks consume identities without handling
+credentials, and layers lacking authoritative information leave fields absent.
+Existing OAuth or workload identity mechanisms can be used without mandating
+one provider or introducing a new token format.
+
+The cost moves to host/adapter integration and well-defined profiles.
+Schema validation alone cannot enforce the trust boundary, and interoperable
+identity-reference syntax and claim mappings still need agreement.
 
 ### Recommendation (for discussion)
 
-{Name the preferred option and explain why its trade-offs are preferable.
-Record important objections and remaining risks, including dissent from
-discussion. Separate evidence or agreement from assumptions.}
+Prefer **D**, using existing transport authentication and identity standards
+where appropriate. Expose optional established agent/workload and tenant
+identity context. Each value is qualified by its authority: the issuer or registry of the agent
+principal, and the system that assigns or attests the tenant. Locally, the
+trusted host establishes it; remotely, the receiver derives it only from
+credentials it validates on the wire.
+
+Keep authentication optional at the protocol level, with deployment-specific
+admission requirements and mandatory validation whenever credentials establish
+identity.
+
+This preserves a small hook-facing contract without making every implementer
+manage tokens. It does not resolve identity-reference syntax or define a
+universal tenant mapping.
 
 ### Related decisions (optional)
 
-{Link related proposals, issues, prior art, and relevant spec sections.
-If reopening a decision, name the new evidence that changed it. If
-superseding a proposal, identify what is replaced and what survives.}
+- [Current draft](../../spec/draft/AGENT-HOOKS-DRAFT.md): sections 1.4
+  (trusted host), 4.1 (metadata), 7 and 7.7.5 (remote services and resolver
+  responsibility), 6.3.1 (failure posture), and 9-10 (approval/content binding).
+- [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization):
+  optional authorization support with conditional requirements built on existing
+  standards, and different treatment of HTTP and local STDIO transports.
+- [A2A Agent Cards](https://a2a-protocol.org/v0.3.0/specification/):
+  endpoint/capability discovery and authentication requirements do not replace
+  authentication of individual requests.
+- Vendor offerings illustrate different integrations, not a common identity
+  schema: [Microsoft Entra Agent ID](https://learn.microsoft.com/en-us/entra/agent-id/agent-identities)
+  uses directory-scoped agent principals;
+  [AWS AgentCore Identity](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity.html)
+  provides workload identity and credential management; and
+  [Google Agent Identity](https://docs.cloud.google.com/iam/docs/agent-identity-overview)
+  uses SPIFFE-based agent identity and delegated credentials.
 
 ## Security and privacy
 
-{Describe changes to trust boundaries, enforcement/fail-closed behavior,
-approval binding, validation, and payload-free auditing where relevant.
-Include abuse cases, disclosure or retention risks, and resource bounds.
-State mitigations and residual risks; if unchanged, explain why. Report
-actual vulnerabilities privately per [SECURITY.md](../../SECURITY.md),
-not in this proposal.}
+**Provenance and tenant isolation.** When using credentials, a producer MUST
+establish both the credential's validity and the issuer's authority to assert the relevant
+identities. Authentication of a shared gateway is not authority to name any
+agent or tenant. Forwarded identity headers require an explicitly trusted,
+authenticated proxy boundary that strips client-spoofable values. Identity
+does not grant access by itself: policy must relate the established tenant to
+the actual resource/action and the applicable authorization rules.
+
+**Credential validation.** Use the selected profile's verification mechanism,
+including signature verification or introspection where applicable, accepted
+credential types and issuers, intended audiences, time bounds, scopes, and any
+sender binding. A decoded JWT is not a validated JWT. Do not fetch arbitrary
+issuer/key URLs from untrusted input. The
+[JWT Best Current Practices](https://www.rfc-editor.org/rfc/rfc8725.html)
+address audience/type confusion and untrusted key references.
+
+**Failure handling.** Legitimate absence of an optional identity is not a
+validation failure, but a policy requiring it must deny. Errors in identity
+processing, including invalid credentials, failure to establish required
+identity, and remote authentication rejection, MUST follow the hook's configured
+`on_error` behavior. Under `on_error: continue`, these errors fail open, just as
+interceptor exceptions, timeouts, and invalid responses do under section 6.3.1.
+The local adapter must route remote authentication rejection through the same
+error-handling path. 
 
 ## Backward compatibility
 
-**Required for proposals that introduce backward incompatibilities.**
+This is a breaking change as it removes fields from the existing HookRequest. This change should have minimal impact as existing known implementations are omitting these fields or providing junk data when they are required. 
 
-{Describe what existing hosts, interceptors, clients, and claims retain
-or lose, how old/new producers and consumers interact, and any migration
-or rollout path. Explicitly identify unchanged behavior. Classify the
-change using [VERSIONING.md](../../VERSIONING.md), distinguishing wire,
-declaration-contract, and package versions as applicable; explain the
-classification.}
-
-## Performance and operational impact (optional)
-
-{Discuss latency, concurrency, memory, cancellation/cleanup, rollout, or
-operator visibility where these affect the design. Include measurements
-when available and label unmeasured assumptions.}
-
-## SDK surface and implementation impact
-
-{Describe the Rust core and FFI impact, and the Python, TypeScript, .NET,
-and Go surfaces that must agree. Name affected APIs, adapters, bindings,
-and documentation; explain unaffected surfaces. Identify feasibility
-risks or implementation sequencing without treating a draft as decided.
-Link existing experiments if useful; no prototype is required by this
-template, and implementation follows the decision.}
-
-## Conformance and tests
-
-{Describe the evidence that will pin the behavior: shared CTK vectors
-for cross-SDK semantics, golden/schema fixtures, or per-SDK tests as
-appropriate. Cover valid cases, defaults, invalid input, failures, and
-interactions with existing behavior. Explain effects on conformance
-claims, capabilities, profiles, or disclosures, if any.}
-
-| Case | Expected result |
-| --- | --- |
-| {Input or scenario.} | {Observable verdict, error, record, or other result.} |
