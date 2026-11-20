@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Hooks: a walkthrough</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme = param === "light" || param === "dark"
+      ? param
+      : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+
+/* ---------- derived tints (all from --cp-* variables) ---------- */
+:root, html[data-theme="dark"] {
+  /* Use slate blue for structure so host outlines never imply a deny. */
+  --cp-accent: color-mix(in srgb, var(--cp-link) 40%, var(--cp-text-muted));
+  --cp-accent-hover: color-mix(in srgb, var(--cp-accent) 80%, var(--cp-text));
+  --cp-accent-soft: color-mix(in srgb, var(--cp-accent) 10%, transparent);
+  --cp-highlight: color-mix(in srgb, var(--cp-accent) 14%, transparent);
+  --allow-bg: color-mix(in srgb, var(--cp-success) 16%, var(--cp-surface));
+  --allow-bd: color-mix(in srgb, var(--cp-success) 60%, var(--cp-surface));
+  --deny-bg: color-mix(in srgb, var(--cp-danger) 14%, var(--cp-surface));
+  --deny-bd: color-mix(in srgb, var(--cp-danger) 60%, var(--cp-surface));
+  --xf-bg: color-mix(in srgb, var(--cp-warning) 20%, var(--cp-surface));
+  --xf-bd: color-mix(in srgb, var(--cp-warning) 70%, var(--cp-surface));
+  --str: color-mix(in srgb, var(--cp-success) 62%, var(--cp-text));
+  --card-shadow: 0 1px 2px var(--cp-border);
+  --mono: Consolas, "Courier New", Courier, monospace;
+  --sans: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+:root { --cp-diagram-stroke: var(--cp-border-strong); }
+html[data-theme="dark"] {
+  --cp-accent: color-mix(in srgb, var(--cp-link) 40%, var(--cp-text-soft));
+  --cp-diagram-stroke: var(--cp-text-muted);
+}
+html[data-theme="dark"] .ln-thin { opacity: .9; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--cp-bg); color: var(--cp-text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+code, pre, .mono { font-family: var(--mono); }
+code { font-size: .92em; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 6px; padding: 0 5px; }
+b, strong { font-weight: 600; }
+
+/* ---------- stage ---------- */
+.viewport { position: fixed; inset: 0 0 48px 0; }
+.stage { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; transform: translate(-50%, -50%) scale(var(--scale, 1)); }
+.slide {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  padding: 44px 64px 60px; background: var(--cp-bg-elevated);
+  border: 1px solid var(--cp-border); border-radius: 16px; box-shadow: var(--cp-shadow);
+  opacity: 0; visibility: hidden; transition: opacity .35s ease, visibility .35s;
+  overflow: hidden;
+}
+.slide.active { opacity: 1; visibility: visible; }
+.kicker { font-size: 14px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--cp-accent); margin-bottom: 8px; }
+h1 { font-size: 76px; line-height: 1.02; font-weight: 600; letter-spacing: -.02em; }
+h2 { font-size: 38px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
+h3 { font-size: 20px; font-weight: 600; line-height: 1.25; }
+.lede { font-size: 19px; line-height: 1.4; color: var(--cp-text-muted); margin-top: 10px; max-width: 1080px; }
+.body { flex: 1; min-height: 0; margin-top: 22px; position: relative; }
+.foot { position: absolute; left: 64px; right: 64px; bottom: 20px; display: flex; justify-content: space-between; font-size: 13px; color: var(--cp-text-soft); }
+.foot .area { display: inline-flex; gap: 8px; align-items: center; }
+.foot .area::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--cp-accent); }
+.muted { color: var(--cp-text-muted); }
+.soft { color: var(--cp-text-soft); }
+.accent { color: var(--cp-accent); }
+.small { font-size: 14px; }
+.tiny { font-size: 12.5px; }
+
+/* ---------- layout ---------- */
+.row { display: flex; gap: 16px; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g5 { grid-template-columns: repeat(5, 1fr); }
+.fill { flex: 1; min-width: 0; }
+.center { align-items: center; }
+.stack { display: grid; }
+.stack > * { grid-area: 1 / 1; }
+
+.card { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; box-shadow: var(--card-shadow); padding: 18px 20px; }
+.card.soft-card { background: var(--cp-surface-soft); box-shadow: none; }
+.card.accent-card { border-color: var(--cp-accent); background: color-mix(in srgb, var(--cp-accent-soft) 100%, var(--cp-surface)); }
+.card h3 + p, .card h3 + ul { margin-top: 8px; }
+.card p { font-size: 16px; line-height: 1.45; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--cp-text-soft); margin-bottom: 6px; }
+
+ul.list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+ul.list li { position: relative; padding-left: 18px; font-size: 16px; line-height: 1.4; }
+ul.list li::before { content: ""; position: absolute; left: 2px; top: .58em; width: 7px; height: 7px; border-radius: 2px; background: var(--cp-accent); }
+ul.list.tight { gap: 5px; }
+ul.list.tight li { font-size: 15px; }
+
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--cp-border); background: var(--cp-surface); font-size: 15px; }
+.pill .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--cp-accent); color: var(--cp-accent-fg); font-size: 12px; font-weight: 700; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--cp-border); background: var(--cp-surface-soft); font-size: 14px; white-space: nowrap; }
+
+/* verdict tags */
+.v { display: inline-flex; align-items: center; gap: 7px; padding: 2px 10px; border-radius: 6px; font-weight: 600; font-size: 14px; border: 1px solid; white-space: nowrap; color: var(--cp-text); }
+.v::before { content: ""; width: 8px; height: 8px; border-radius: 50%; }
+.v-allow { background: var(--allow-bg); border-color: var(--allow-bd); }
+.v-allow::before { background: var(--cp-success); }
+.v-deny { background: var(--deny-bg); border-color: var(--deny-bd); }
+.v-deny::before { background: var(--cp-danger); }
+.v-xf { background: var(--xf-bg); border-color: var(--xf-bd); }
+.v-xf::before { background: var(--cp-warning); }
+.v-lift { background: var(--deny-bg); border-color: var(--cp-danger); border-style: dashed; }
+.v-lift::before { background: var(--cp-danger); }
+.v-skip { background: var(--cp-surface-soft); border-color: var(--cp-border); border-style: dashed; color: var(--cp-text-soft); font-weight: 500; }
+.v-skip::before { background: var(--cp-border-strong); }
+.v-lg { font-size: 18px; padding: 5px 14px; border-radius: 8px; }
+
+/* code */
+pre.code { font-size: 14px; line-height: 1.48; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 10px; padding: 12px 14px; white-space: pre; overflow: hidden; color: var(--cp-text); }
+pre.code.sm { font-size: 13px; line-height: 1.42; padding: 10px 12px; }
+pre.code.xs { font-size: 12px; line-height: 1.4; padding: 8px 10px; }
+pre.code .ln-row { display: block; }
+pre.code .ln-row.hl { background: var(--cp-highlight); margin: 0 -14px; padding: 0 14px; border-left: 3px solid var(--cp-accent); padding-left: 11px; }
+pre.code.sm .ln-row.hl { margin: 0 -12px; padding: 0 12px 0 9px; }
+pre.code.xs .ln-row.hl { margin: 0 -10px; padding: 0 10px 0 7px; }
+pre.code .k { color: var(--cp-accent); }
+pre.code .s { color: var(--str); }
+pre.code .n { color: var(--cp-link); }
+pre.code .c { color: var(--cp-text-soft); font-style: italic; }
+
+/* tables */
+table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 15px; background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden; }
+table.t th, table.t td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--cp-border); vertical-align: middle; }
+table.t th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--cp-text-soft); background: var(--cp-surface-soft); font-weight: 600; }
+table.t tr:last-child td { border-bottom: none; }
+table.t td.mono, table.t td code { font-size: 13.5px; }
+
+/* callout */
+.callout { border-left: 4px solid var(--cp-accent); background: var(--cp-accent-soft); padding: 10px 16px; border-radius: 0 10px 10px 0; font-size: 16px; line-height: 1.4; }
+
+/* css arrows */
+.arrow-r, .arrow-l { position: relative; height: 2px; background: var(--cp-accent); flex: 1; min-width: 24px; }
+.arrow-r::after, .arrow-l::after { content: ""; position: absolute; top: -6px; border: 7px solid transparent; }
+.arrow-r::after { right: -2px; border-left: 10px solid var(--cp-accent); border-right: 0; }
+.arrow-l::after { left: -2px; border-right: 10px solid var(--cp-accent); border-left: 0; }
+.arrow-label { font-size: 13px; color: var(--cp-text-muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+
+/* ---------- svg ---------- */
+svg { overflow: visible; display: block; }
+svg text { font-family: var(--sans); fill: var(--cp-text); font-size: 15px; }
+svg .t-muted { fill: var(--cp-text-muted); }
+svg .t-soft { fill: var(--cp-text-soft); }
+svg .t-mono { font-family: var(--mono); }
+svg .t-b { font-weight: 600; }
+svg .t-accent { fill: var(--cp-accent); }
+svg .t-sm { font-size: 13px; }
+svg .t-xs { font-size: 11.5px; }
+svg .t-lg { font-size: 18px; }
+.node { fill: var(--cp-surface); stroke: var(--cp-diagram-stroke); stroke-width: 1.5; }
+.node-soft { fill: var(--cp-surface-soft); stroke: var(--cp-border); stroke-width: 1.2; }
+.node-dash { fill: var(--cp-surface-soft); stroke: var(--cp-diagram-stroke); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.node-accent { fill: var(--cp-accent-soft); stroke: var(--cp-accent); stroke-width: 2; }
+.node-solid { fill: var(--cp-accent); stroke: none; }
+.fill-allow { fill: var(--allow-bg); stroke: var(--cp-success); stroke-width: 1.5; }
+.fill-deny { fill: var(--deny-bg); stroke: var(--cp-danger); stroke-width: 1.5; }
+.fill-xf { fill: var(--xf-bg); stroke: var(--cp-warning); stroke-width: 1.5; }
+.fill-lift { fill: var(--deny-bg); stroke: var(--cp-danger); stroke-width: 1.8; stroke-dasharray: 6 4; }
+.dot-allow { fill: var(--cp-success); } .dot-deny { fill: var(--cp-danger); } .dot-xf { fill: var(--cp-warning); } .dot-accent { fill: var(--cp-accent); }
+.ln { stroke: var(--cp-diagram-stroke); stroke-width: 2; fill: none; }
+.ln-thin { stroke: var(--cp-diagram-stroke); stroke-width: 1.2; fill: none; opacity: .75; }
+.ln-accent { stroke: var(--cp-accent); }
+.ln-allow { stroke: var(--cp-success); }
+.ln-deny { stroke: var(--cp-danger); }
+.ln-xf { stroke: var(--cp-warning); }
+.ln-dash { stroke-dasharray: 6 5; }
+.mk { fill: var(--cp-diagram-stroke); } .mk-accent { fill: var(--cp-accent); } .mk-allow { fill: var(--cp-success); } .mk-deny { fill: var(--cp-danger); } .mk-xf { fill: var(--cp-warning); }
+.tl-cur { fill: none; stroke: var(--cp-accent); stroke-width: 3; }
+
+/* ---------- end-to-end walkthrough ---------- */
+.e2e { display: grid; grid-template-columns: 1.6fr 1fr .8fr; gap: 20px; align-items: start; }
+.vrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 12px; border: 1px solid var(--cp-border); border-radius: 10px; background: var(--cp-surface); font-size: 15px; }
+.vrow.resolver { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+.vrow .idx { font-family: var(--mono); color: var(--cp-text-soft); margin-right: 8px; font-size: 13px; }
+.vrow .why { display: block; font-size: 12px; color: var(--cp-text-muted); font-family: var(--mono); margin-top: 2px; }
+.quote { font-size: 20px; line-height: 1.4; padding: 14px 18px; border-radius: 10px; background: var(--cp-surface); border: 1px solid var(--cp-border); border-left: 4px solid var(--cp-accent); }
+.vrow.sm { padding: 4px 10px; font-size: 13.5px; }
+.vrow.sm .idx { font-size: 12px; }
+.v.sm { font-size: 12px; padding: 1px 8px; gap: 5px; }
+.v.sm::before { width: 6px; height: 6px; }
+table.t.compact th, table.t.compact td { padding: 5px 10px; font-size: 14px; }
+table.t.compact td.c, table.t.compact th.c { text-align: center; }
+.mdot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--cp-accent); }
+.mdot.off { background: transparent; border: 1px dashed var(--cp-border); }
+
+/* ---------- fragments ---------- */
+[data-step], [data-until] { transition: opacity .3s ease, visibility .3s; }
+.is-hidden { opacity: 0 !important; visibility: hidden !important; }
+
+/* ---------- chrome ---------- */
+.progress { position: fixed; left: 0; top: 0; height: 3px; background: var(--cp-accent); width: 0; transition: width .3s ease; z-index: 5; }
+.bar { position: fixed; left: 0; right: 0; bottom: 0; height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: var(--cp-bg-elevated); border-top: 1px solid var(--cp-border); font-size: 14px; color: var(--cp-text-muted); z-index: 5; }
+.bar .grow { flex: 1; }
+.btn { height: 32px; min-width: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--cp-border); background: var(--cp-surface); color: var(--cp-text); font: inherit; font-size: 14px; cursor: pointer; }
+.btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.btn:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.counter { font-variant-numeric: tabular-nums; min-width: 64px; text-align: center; color: var(--cp-text); }
+.notes-panel { position: fixed; right: 16px; bottom: 64px; width: 440px; max-height: 50vh; overflow: auto; padding: 16px 18px; background: var(--cp-panel-strong); border: 1px solid var(--cp-border); border-radius: 16px; box-shadow: var(--cp-shadow); font-size: 15px; line-height: 1.5; display: none; z-index: 6; }
+body.show-notes .notes-panel { display: block; }
+.notes-panel p + p { margin-top: 8px; }
+.notes-panel .label { color: var(--cp-accent); }
+.notes-panel { max-width: calc(100vw - 32px); }
+aside.notes { display: none; }
+.help { position: fixed; inset: 0; background: var(--cp-overlay); display: none; place-items: center; z-index: 7; }
+body.show-help .help { display: grid; }
+.help .card { width: 460px; }
+.help table { width: 100%; font-size: 15px; border-collapse: collapse; margin-top: 10px; }
+.help td { padding: 5px 0; }
+.help td:first-child { width: 150px; }
+.help kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border: 1px solid var(--cp-border-strong); border-radius: 6px; background: var(--cp-surface-soft); }
+.notice { position: fixed; bottom: 64px; left: 16px; max-width: calc(100vw - 32px); padding: 12px 16px; border: 1px solid var(--cp-danger); border-radius: 10px; background: var(--cp-surface); z-index: 8; }
+@media (max-width: 700px) {
+  .bar { padding: 0 8px; gap: 4px; }
+  .bar .grow { display: none; }
+  .btn { padding: 0 8px; }
+  #fsBtn { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+
+/* ---------- print ---------- */
+@media print {
+  @page { size: 1280px 720px; margin: 0; }
+  html, body { height: auto; overflow: visible; background: var(--cp-bg-elevated); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .viewport { position: static; }
+  .stage { position: static; transform: none; width: 1280px; height: auto; }
+  .slide { position: relative; opacity: 1; visibility: visible; width: 1280px; height: 720px; border: none; border-radius: 0; box-shadow: none; break-after: page; page-break-after: always; transition: none; }
+  .bar, .progress, .notes-panel, .help, .notice { display: none !important; }
+  [data-step], [data-until] { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-accent" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-allow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-allow" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-deny" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-deny" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-xf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-xf" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+</svg>
+
+<main class="viewport">
+<div class="stage" id="stage">
+<!-- ============ 1. Title ============ -->
+<section class="slide" data-title="Agent Hooks">
+  <div class="row" style="flex:1; align-items:center; gap:56px">
+    <div class="fill">
+      <h1>Agent Hooks</h1>
+      <div class="col" style="margin-top:40px; gap:10px; align-items:flex-start">
+        <span class="pill"><span class="n">1</span>The problem</span>
+        <span class="pill"><span class="n">2</span>Interception Points</span>
+        <span class="pill"><span class="n">3</span>Verdicts</span>
+        <span class="pill"><span class="n">4</span>Interceptor Composition</span>
+        <span class="pill"><span class="n">5</span>Audit Records</span>
+      </div>
+    </div>
+    <svg width="480" height="420" viewBox="0 0 480 420" role="img" aria-label="The host sends a request. Interceptors perform an action and return a verdict to the host.">
+      <rect class="node-accent" x="0" y="30" width="210" height="360" rx="16"/>
+      <text x="24" y="64" class="t-b t-lg">Host</text>
+      <text x="24" y="86" class="t-sm t-muted">agent loop</text>
+      <circle class="ln" cx="105" cy="220" r="72"/>
+      <circle class="dot-accent" cx="105" cy="148" r="7"/><circle class="dot-accent" cx="155.9" cy="169.1" r="7"/>
+      <circle class="dot-accent" cx="177" cy="220" r="7"/><circle class="dot-accent" cx="155.9" cy="270.9" r="7"/>
+      <circle class="dot-accent" cx="105" cy="292" r="7"/><circle class="dot-accent" cx="54.1" cy="270.9" r="7"/>
+      <circle class="dot-accent" cx="33" cy="220" r="7"/><circle class="dot-accent" cx="54.1" cy="169.1" r="7"/>
+      <text x="105" y="216" text-anchor="middle" class="t-b">8</text>
+      <text x="105" y="236" text-anchor="middle" class="t-xs t-muted">interception points</text>
+      <text x="105" y="344" text-anchor="middle" class="t-xs t-muted">frameworks &middot; runtimes</text>
+      <text x="105" y="362" text-anchor="middle" class="t-xs t-muted">gateways &middot; harnesses</text>
+      <line class="ln ln-accent" x1="214" y1="160" x2="284" y2="160" marker-end="url(#ah-accent)"/>
+      <text x="249" y="148" text-anchor="middle" class="t-xs t-muted">request</text>
+      <line class="ln ln-accent" x1="284" y1="282" x2="214" y2="282" marker-end="url(#ah-accent)"/>
+      <text x="249" y="304" text-anchor="middle" class="t-xs t-muted">verdict</text>
+      <rect class="node" x="290" y="30" width="190" height="360" rx="16"/>
+      <text x="310" y="64" class="t-b t-lg">Interceptors</text>
+      <text x="385" y="165" text-anchor="middle" class="t-lg">Perform an action</text>
+      <path class="ln" d="M385 183 V251" marker-end="url(#ah)"/>
+      <text x="385" y="287" text-anchor="middle" class="t-lg">Return a verdict</text>
+    </svg>
+  </div>
+  <div class="foot" style="justify-content:flex-end"><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Agent Hooks is a draft specification for one thing: a stable contract between the software that runs an AI agent (the <b>host</b>) and the controls that govern it (the <b>interceptors</b>).</p>
+    <p>The main deck covers the problem, interception points, verdicts, interceptor composition, and audit records. After slide 12, the Appendix divider introduces developer reference material.</p>
+    <p class="small muted">Spec: AGENT-HOOKS-DRAFT.md &sect;1 Introduction.</p>
+  </aside>
+</section>
+
+<!-- ============ 2. Problem ============ -->
+<section class="slide" data-title="Why a contract">
+  <div class="kicker">The problem</div>
+  <h2>Every agent host and every control integrate differently</h2>
+  <p class="lede">Without a common contract, each pairing needs an adapter. The goal: N&nbsp;+&nbsp;M integrations instead of N&nbsp;&times;&nbsp;M.</p>
+  <div class="body col" style="gap:16px">
+    <div class="grid g2">
+      <div class="card">
+        <div class="label">Today</div>
+        <h3>N &times; M bespoke integrations</h3>
+        <svg width="528" height="236" viewBox="0 0 528 236" style="margin-top:12px" role="img" aria-label="Four hosts each wired directly to four controls">
+          <g class="ln-thin">
+            <path d="M170 20 L358 20 M170 20 L358 82 M170 20 L358 144 M170 20 L358 206"/>
+            <path d="M170 82 L358 20 M170 82 L358 82 M170 82 L358 144 M170 82 L358 206"/>
+            <path d="M170 144 L358 20 M170 144 L358 82 M170 144 L358 144 M170 144 L358 206"/>
+            <path d="M170 206 L358 20 M170 206 L358 82 M170 206 L358 144 M170 206 L358 206"/>
+          </g>
+          <rect class="node" x="0" y="0" width="170" height="40" rx="10"/><text x="14" y="26">Agent framework</text>
+          <rect class="node" x="0" y="62" width="170" height="40" rx="10"/><text x="14" y="88">Agent runtime</text>
+          <rect class="node" x="0" y="124" width="170" height="40" rx="10"/><text x="14" y="150">AI gateway</text>
+          <rect class="node" x="0" y="186" width="170" height="40" rx="10"/><text x="14" y="212">Agent harness</text>
+          <rect class="node-soft" x="358" y="0" width="170" height="40" rx="10"/><text x="372" y="26">Policy engine</text>
+          <rect class="node-soft" x="358" y="62" width="170" height="40" rx="10"/><text x="372" y="88">Content filter</text>
+          <rect class="node-soft" x="358" y="124" width="170" height="40" rx="10"/><text x="372" y="150">Rate limiter</text>
+          <rect class="node-soft" x="358" y="186" width="170" height="40" rx="10"/><text x="372" y="212">Approval gateway</text>
+        </svg>
+      </div>
+      <div class="card" data-step="1">
+        <div class="label accent">With Agent Hooks</div>
+        <h3>N + M: one contract on each side</h3>
+        <svg width="528" height="236" viewBox="0 0 528 236" style="margin-top:12px" role="img" aria-label="Four hosts and four controls each connect once through Agent Hooks">
+          <g class="ln ln-accent">
+            <path d="M150 20 L214 20 M150 82 L214 82 M150 144 L214 144 M150 206 L214 206"/>
+            <path d="M314 20 L378 20 M314 82 L378 82 M314 144 L378 144 M314 206 L378 206"/>
+          </g>
+          <rect class="node" x="0" y="0" width="150" height="40" rx="10"/><text x="12" y="26">Agent framework</text>
+          <rect class="node" x="0" y="62" width="150" height="40" rx="10"/><text x="12" y="88">Agent runtime</text>
+          <rect class="node" x="0" y="124" width="150" height="40" rx="10"/><text x="12" y="150">AI gateway</text>
+          <rect class="node" x="0" y="186" width="150" height="40" rx="10"/><text x="12" y="212">Agent harness</text>
+          <rect class="node-accent" x="214" y="0" width="100" height="226" rx="12"/>
+          <text x="264" y="108" text-anchor="middle" class="t-b t-accent">Agent</text>
+          <text x="264" y="128" text-anchor="middle" class="t-b t-accent">Hooks</text>
+          <rect class="node-soft" x="378" y="0" width="150" height="40" rx="10"/><text x="390" y="26">Policy engine</text>
+          <rect class="node-soft" x="378" y="62" width="150" height="40" rx="10"/><text x="390" y="88">Content filter</text>
+          <rect class="node-soft" x="378" y="124" width="150" height="40" rx="10"/><text x="390" y="150">Rate limiter</text>
+          <rect class="node-soft" x="378" y="186" width="150" height="40" rx="10"/><text x="390" y="212">Approval gateway</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Why a contract</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Every agent framework, runtime, gateway, and harness exposes its own extension points. Every control vendor writes a separate adapter for each one. That's N &times; M work, and the semantics drift between adapters: what "block" means, what happens on timeout, and what gets logged.</p>
+    <p>Agent Hooks fixes the contract in the middle. A host implements it once, and an interceptor implements it once.</p>
+    <p>The host asks for a decision; the interceptor returns a verdict. Next, distinguish that contract from a policy engine, a sandbox, and telemetry.</p>
+  </aside>
+</section>
+
+<!-- ============ 3. Interception points ============ -->
+<section class="slide" data-title="Interception points">
+  <div class="kicker">Interception points</div>
+  <h2>Eight points around the agent loop</h2>
+  <p class="lede">Two bracket the session. Six guard every turn: what comes in, each model call, each tool call, and what goes out.</p>
+  <div class="body">
+    <svg width="1152" height="372" viewBox="0 0 1152 372" role="img" aria-label="Interception points: agent_startup, input, pre_model_call, model, post_model_call, output, agent_shutdown, with a tool loop of pre_tool_call, tool, post_tool_call">
+      <path class="ln-thin" d="M176 34 L176 24 L978 24 L978 34"/>
+      <text x="577" y="16" text-anchor="middle" class="t-xs t-muted">each turn (repeats in multi-turn sessions)</text>
+      <g class="ln">
+        <path d="M140 112 L174 112" marker-end="url(#ah)"/>
+        <path d="M316 112 L350 112" marker-end="url(#ah)"/>
+        <path d="M490 112 L526 112" marker-end="url(#ah)"/>
+        <path d="M624 112 L660 112" marker-end="url(#ah)"/>
+        <path d="M800 112 L836 112" marker-end="url(#ah)"/>
+        <path d="M978 112 L1012 112" marker-end="url(#ah)"/>
+      </g>
+      <rect class="node-accent" x="0" y="84" width="140" height="56" rx="10"/><text x="70" y="117" text-anchor="middle" class="t-mono t-sm">agent_startup</text>
+      <rect class="node" x="176" y="84" width="140" height="56" rx="10"/><text x="246" y="117" text-anchor="middle" class="t-mono t-sm">input</text>
+      <rect class="node" x="352" y="84" width="138" height="56" rx="10"/><text x="421" y="117" text-anchor="middle" class="t-mono t-sm">pre_model_call</text>
+      <rect class="node-dash" x="528" y="84" width="96" height="56" rx="10"/><text x="576" y="117" text-anchor="middle" class="t-sm t-muted">model call</text>
+      <rect class="node" x="662" y="84" width="138" height="56" rx="10"/><text x="731" y="117" text-anchor="middle" class="t-mono t-sm">post_model_call</text>
+      <rect class="node" x="838" y="84" width="140" height="56" rx="10"/><text x="908" y="117" text-anchor="middle" class="t-mono t-sm">output</text>
+      <rect class="node-accent" x="1014" y="84" width="138" height="56" rx="10"/><text x="1083" y="117" text-anchor="middle" class="t-mono t-sm">agent_shutdown</text>
+
+      <g>
+        <path class="ln" d="M731 140 L731 248" marker-end="url(#ah)"/>
+        <path class="ln" d="M662 278 L626 278" marker-end="url(#ah)"/>
+        <path class="ln" d="M528 278 L492 278" marker-end="url(#ah)"/>
+        <path class="ln" d="M421 250 L421 142" marker-end="url(#ah)"/>
+        <rect class="node" x="662" y="250" width="138" height="56" rx="10"/><text x="731" y="283" text-anchor="middle" class="t-mono t-sm">pre_tool_call</text>
+        <rect class="node-dash" x="528" y="250" width="96" height="56" rx="10"/><text x="576" y="283" text-anchor="middle" class="t-sm t-muted">tool run</text>
+        <rect class="node" x="352" y="250" width="138" height="56" rx="10"/><text x="421" y="283" text-anchor="middle" class="t-mono t-sm">post_tool_call</text>
+        <text x="576" y="192" text-anchor="middle" class="t-sm t-b t-accent">tool loop</text>
+        <text x="576" y="212" text-anchor="middle" class="t-xs t-muted">once per tool call the model requests</text>
+      </g>
+
+      <g>
+        <rect class="node-dash" x="352" y="350" width="28" height="18" rx="5"/><text x="388" y="364" class="t-xs t-muted">host-run step (not an interception point)</text>
+        <rect class="node-accent" x="662" y="350" width="28" height="18" rx="5"/><text x="698" y="364" class="t-xs t-muted">session lifecycle</text>
+      </g>
+    </svg>
+  </div>
+  <div class="foot"><span class="area">Interception points</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>The spec fixes eight points with a required order. <code>agent_startup</code> comes first and <code>agent_shutdown</code> last. Each <code>input</code> precedes the model and tool calls it causes, and each pre is paired with exactly one post unless it was blocked.</p>
+    <p>The tool loop shows that every requested tool is bracketed by <code>pre_tool_call</code> and <code>post_tool_call</code>, and then control returns to the model.</p>
+    <p>Startup and shutdown can only allow or deny.</p>
+    <p class="small muted">Spec: &sect;3 Interception points (ordering &sect;3.1, subsetting &sect;3.2), &sect;5.2 Transforms.</p>
+  </aside>
+</section>
+
+<!-- ============ 7. Three verdicts ============ -->
+<section class="slide" data-title="Verdicts">
+  <div class="kicker">Verdicts</div>
+  <h2>Every interceptor returns one of three verdicts</h2>
+  <p class="lede">The interceptor returns a decision; the host is responsible for enforcing the decision.</p>
+  <div class="body col" style="gap:18px">
+    <div class="grid g3" style="align-items:stretch">
+      <div class="card col" style="gap:10px">
+        <div><span class="v v-allow v-lg">Allow</span></div>
+        <p>The action proceeds unchanged.</p>
+<pre class="code xs">{ "verdict": { "decision": "allow" } }</pre>
+        <p class="small muted">An interceptor with nothing to decide still returns allow.</p>
+      </div>
+      <div class="card col" style="gap:10px">
+        <div><span class="v v-deny v-lg">Deny</span></div>
+        <p>The action must not proceed.</p>
+<pre class="code xs">{ "verdict": {
+    "decision": "deny",
+    "reason": "email.external_recipient",
+    "message": "External email is blocked."
+} }</pre>
+        <p class="small muted"><code>reason</code> is for machines; <code>message</code> is for people.</p>
+      </div>
+      <div class="card col" style="gap:10px">
+        <div><span class="v v-xf v-lg">Transform</span></div>
+        <p>The action proceeds with one member replaced.</p>
+<pre class="code xs">{ "verdict": {
+    "decision": "transform",
+»   "transform": { "args": {
+      "to": "sam@fabrikam.com",
+      "body": "SSN [REDACTED]" } }
+} }</pre>
+        <p class="small muted">Whole-member replacement, validated by the host. Not allowed at startup or shutdown.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Verdicts</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>The decision set is intentionally small. <b>Allow</b> proceeds as-is. <b>Deny</b> blocks. <b>Transform</b> proceeds with exactly one member replaced: the bare member for that point, such as <code>args</code> here at <code>pre_tool_call</code>.</p>
+    <p>Optional members carry the why: a machine reason, a human message, warnings, bounded evidence, and labels. A malformed verdict is treated as a deny with <code>host_error:verdict_invalid</code>.</p>
+    <p class="small muted">Spec: &sect;5.1 Verdict, &sect;5.1.2 data types, &sect;5.2 Transforms, &sect;5.3 Evidence, &sect;5.4 Result labels.</p>
+  </aside>
+</section>
+
+<!-- ============ Verdict example: allow vs. deny ============ -->
+<section class="slide" data-title="Example: allow and deny">
+  <div class="kicker">Verdicts</div>
+  <h2>One tool call, two outcomes</h2>
+  <p class="lede">The interceptor only returns a verdict. The host enforces it: it calls the tool, or it blocks the call.</p>
+  <div class="body grid g2" style="align-items:start">
+    <div class="card" style="padding:14px 20px 10px">
+      <div class="label">Internal recipient</div>
+      <svg width="528" height="392" viewBox="0 0 528 392" role="img" aria-label="Allow: inside the host, the agent calls send_email and the host emits pre_tool_call. The host sends a request to the interceptor, which returns allow. The host then calls the tool, which runs.">
+        <rect class="node-accent" x="0" y="0" width="310" height="250" rx="16"/>
+        <text x="18" y="32" class="t-b t-lg">Host</text>
+        <text x="18" y="54" class="t-sm t-muted">agent loop &middot; enforces verdicts</text>
+        <rect class="node" x="18" y="72" width="114" height="160" rx="10"/>
+        <text x="75" y="102" text-anchor="middle" class="t-b">Agent</text>
+        <text x="75" y="126" text-anchor="middle" class="t-xs t-muted">calls</text>
+        <text x="75" y="146" text-anchor="middle" class="t-sm t-mono">send_email</text>
+        <text x="75" y="168" text-anchor="middle" class="t-xs t-muted">sam@contoso.com</text>
+        <path class="ln" d="M132 152 H164" marker-end="url(#ah)"/>
+        <rect class="node" x="168" y="72" width="124" height="160" rx="10"/>
+        <circle class="dot-accent" cx="230" cy="98" r="7"/>
+        <text x="230" y="128" text-anchor="middle" class="t-sm t-mono t-b">pre_tool_call</text>
+        <text x="230" y="152" text-anchor="middle" class="t-xs t-muted">interception</text>
+        <text x="230" y="168" text-anchor="middle" class="t-xs t-muted">point</text>
+        <path class="ln ln-accent" d="M292 110 H388" marker-end="url(#ah-accent)"/>
+        <text x="341" y="100" text-anchor="middle" class="t-xs t-muted">request</text>
+        <path class="ln ln-allow" d="M392 174 H296" marker-end="url(#ah-allow)"/>
+        <text x="341" y="194" text-anchor="middle" class="t-xs t-muted">verdict</text>
+        <rect class="node" x="392" y="0" width="136" height="250" rx="16"/>
+        <text x="408" y="32" class="t-b t-lg">Interceptor</text>
+        <text x="408" y="54" class="t-sm t-muted">decides only</text>
+        <text x="460" y="104" text-anchor="middle" class="t-sm">Checks the</text>
+        <text x="460" y="121" text-anchor="middle" class="t-sm">recipient</text>
+        <path class="ln" d="M460 128 V150" marker-end="url(#ah)"/>
+        <rect class="fill-allow" x="406" y="154" width="108" height="40" rx="10"/>
+        <text x="460" y="180" text-anchor="middle" class="t-b t-lg">Allow</text>
+        <path class="ln ln-allow" d="M230 232 V288" marker-end="url(#ah-allow)"/>
+        <text x="242" y="268" class="t-xs t-muted">host calls the tool</text>
+        <rect class="node" x="85" y="292" width="290" height="70" rx="12"/>
+        <circle class="dot-allow" cx="115" cy="327" r="14"/>
+        <path d="M108 327 L113 332 L123 321" style="fill:none; stroke:var(--cp-surface); stroke-width:3; stroke-linecap:round; stroke-linejoin:round"/>
+        <text x="141" y="321" class="t-b t-mono">send_email</text>
+        <text x="141" y="342" class="t-xs t-muted">runs; the result returns to the agent</text>
+        <text x="230" y="386" text-anchor="middle" class="t-xs t-muted"><tspan class="t-mono">post_tool_call</tspan> can then check the result</text>
+      </svg>
+    </div>
+    <div class="card" style="padding:14px 20px 10px" data-step="1">
+      <div class="label">External recipient</div>
+      <svg width="528" height="392" viewBox="0 0 528 392" role="img" aria-label="Deny: inside the host, the agent calls send_email and the host emits pre_tool_call. The host sends a request to the interceptor, which returns deny. The host blocks the call, so the tool never runs and the agent gets a tool error.">
+        <rect class="node-accent" x="0" y="0" width="310" height="250" rx="16"/>
+        <text x="18" y="32" class="t-b t-lg">Host</text>
+        <text x="18" y="54" class="t-sm t-muted">agent loop &middot; enforces verdicts</text>
+        <rect class="node" x="18" y="72" width="114" height="160" rx="10"/>
+        <text x="75" y="102" text-anchor="middle" class="t-b">Agent</text>
+        <text x="75" y="126" text-anchor="middle" class="t-xs t-muted">calls</text>
+        <text x="75" y="146" text-anchor="middle" class="t-sm t-mono">send_email</text>
+        <text x="75" y="168" text-anchor="middle" class="t-xs t-muted">sam@fabrikam.com</text>
+        <path class="ln" d="M132 152 H164" marker-end="url(#ah)"/>
+        <rect class="node" x="168" y="72" width="124" height="160" rx="10"/>
+        <circle class="dot-accent" cx="230" cy="98" r="7"/>
+        <text x="230" y="128" text-anchor="middle" class="t-sm t-mono t-b">pre_tool_call</text>
+        <text x="230" y="152" text-anchor="middle" class="t-xs t-muted">interception</text>
+        <text x="230" y="168" text-anchor="middle" class="t-xs t-muted">point</text>
+        <path class="ln ln-accent" d="M292 110 H388" marker-end="url(#ah-accent)"/>
+        <text x="341" y="100" text-anchor="middle" class="t-xs t-muted">request</text>
+        <path class="ln ln-deny" d="M392 174 H296" marker-end="url(#ah-deny)"/>
+        <text x="341" y="194" text-anchor="middle" class="t-xs t-muted">verdict</text>
+        <rect class="node" x="392" y="0" width="136" height="250" rx="16"/>
+        <text x="408" y="32" class="t-b t-lg">Interceptor</text>
+        <text x="408" y="54" class="t-sm t-muted">decides only</text>
+        <text x="460" y="104" text-anchor="middle" class="t-sm">Checks the</text>
+        <text x="460" y="121" text-anchor="middle" class="t-sm">recipient</text>
+        <path class="ln" d="M460 128 V150" marker-end="url(#ah)"/>
+        <rect class="fill-deny" x="406" y="154" width="108" height="40" rx="10"/>
+        <text x="460" y="180" text-anchor="middle" class="t-b t-lg">Deny</text>
+        <path class="ln ln-deny ln-dash" d="M230 232 V254"/>
+        <circle class="dot-deny" cx="230" cy="268" r="11"/>
+        <path d="M225 263 L235 273 M235 263 L225 273" style="fill:none; stroke:var(--cp-surface); stroke-width:2.6; stroke-linecap:round"/>
+        <text x="250" y="272" class="t-xs t-muted">host blocks the call</text>
+        <rect class="fill-deny" x="85" y="292" width="290" height="70" rx="12" style="stroke-dasharray:6 5"/>
+        <circle class="dot-deny" cx="115" cy="327" r="14"/>
+        <path d="M109 321 L121 333 M121 321 L109 333" style="fill:none; stroke:var(--cp-surface); stroke-width:3; stroke-linecap:round"/>
+        <text x="141" y="321" class="t-b t-mono">send_email</text>
+        <text x="141" y="342" class="t-xs t-muted">never runs; the agent gets a tool error</text>
+        <text x="230" y="386" text-anchor="middle" class="t-xs t-muted">no <tspan class="t-mono">post_tool_call</tspan> is emitted</text>
+      </svg>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Verdicts</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Same structure as the title slide: the host runs the agent loop, sends a request at an interception point, and gets a verdict back. The new piece is the tool. The host calls it, not the interceptor.</p>
+    <p><b>Allow:</b> the agent asks to email an internal recipient. The host pauses at <code>pre_tool_call</code> and sends the request to the interceptor, which returns allow. The host then calls <code>send_email</code>. The result flows through <code>post_tool_call</code> and back to the agent.</p>
+    <p><b>Deny:</b> the recipient is external, so the interceptor returns deny with a machine-readable reason such as <code>email.external_recipient</code>. The host must not call the tool and must not emit <code>post_tool_call</code> for it. The agent loop continues as if the action failed, for example by surfacing a tool error to the model, unless the host ends the turn.</p>
+    <p>The interceptor never touches the tool. Enforcement is the host's job, which is why the verdict is binding rather than advisory.</p>
+    <p class="small muted">Illustrative tool, recipients, and reason. Spec: &sect;5.1 Verdict, &sect;6.1 Verdict enforcement, &sect;6.2 Block propagation.</p>
+  </aside>
+</section>
+
+<!-- ============ Transform Verdict ============ -->
+<section class="slide" data-title="Transform Verdict">
+  <div class="kicker">Verdicts</div>
+  <h2>Transform Verdict</h2>
+  <p class="lede">The agent wants to email a refund notice. The notice can go out, but the account number must stay private.</p>
+  <div class="body">
+    <div class="card">
+      <svg width="1108" height="388" viewBox="0 0 1108 388" role="img" aria-label="The agent requests send_email with the body Refund sent: A-1042. At pre_tool_call the host sends the request to an interceptor. It returns Transform with the same recipient and a redacted body. The host validates the replacement arguments and calls send_email. The recipient sees Refund sent: [REDACTED].">
+        <rect class="node-accent" x="2" y="4" width="596" height="234" rx="16"/>
+        <text x="24" y="35" class="t-b t-lg">Host</text>
+        <text x="24" y="56" class="t-sm t-muted">Agent loop &middot; enforces verdicts</text>
+        <rect class="node" x="24" y="74" width="282" height="140" rx="10"/>
+        <text x="44" y="105" class="t-b t-lg">Agent</text>
+        <text x="44" y="129">Requests <tspan class="t-mono">send_email</tspan></text>
+        <text x="44" y="166" class="t-mono">to: sam@contoso.com</text>
+        <text x="44" y="190" class="t-mono">body: Refund sent: <tspan class="t-b">A-1042</tspan></text>
+        <path class="ln" d="M306 144 H362" marker-end="url(#ah)"/>
+        <rect class="node" x="366" y="74" width="210" height="140" rx="10"/>
+        <circle class="dot-accent" cx="471" cy="106" r="7"/>
+        <text x="471" y="146" text-anchor="middle" class="t-b t-mono">pre_tool_call</text>
+        <text x="471" y="177" text-anchor="middle" class="t-muted">Tool call paused</text>
+
+        <rect class="node" x="770" y="4" width="336" height="234" rx="16"/>
+        <text x="792" y="35" class="t-b t-lg">Interceptor</text>
+        <text x="792" y="56" class="t-sm t-muted">Redacts the account number</text>
+        <rect class="fill-xf" x="792" y="74" width="292" height="140" rx="10"/>
+        <text x="812" y="105" class="t-b t-lg">Transform</text>
+        <text x="812" y="129">Complete replacement arguments</text>
+        <text x="812" y="166" class="t-mono">to: sam@contoso.com</text>
+        <text x="812" y="190" class="t-mono">body: Refund sent: <tspan class="t-b">[REDACTED]</tspan></text>
+        <path class="ln ln-accent" d="M576 119 H766" marker-end="url(#ah-accent)"/>
+        <text x="684" y="108" text-anchor="middle" class="t-muted">Hook request</text>
+        <path class="ln ln-xf" d="M770 181 H580" marker-end="url(#ah-xf)"/>
+        <text x="684" y="204" text-anchor="middle" class="t-muted">Transform verdict</text>
+
+        <g data-step="1">
+          <path class="ln" d="M471 214 V298" marker-end="url(#ah)"/>
+          <text x="489" y="276">The host validates the replacement and calls the tool.</text>
+          <rect class="node" x="194" y="302" width="554" height="82" rx="12"/>
+          <text x="218" y="335" class="t-b t-lg t-mono">send_email</text>
+          <text x="218" y="362">Sam receives: &ldquo;Refund sent: <tspan class="t-b">[REDACTED]</tspan>&rdquo;</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Verdicts</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Start inside the host, as in the allow/deny example. The agent asks to send a refund notice to Sam. At <code>pre_tool_call</code> the email has not been sent: the host passes the proposed call to the redactor.</p>
+    <p>Compare the two argument sets. The redactor returns a transform with the same <code>to</code> and a new <code>body</code>. At this hook <code>transform.args</code> replaces all of <code>tool_call.args</code>, so the redactor includes the recipient even though it has not changed. The tool name and call ID stay the same.</p>
+    <p>Advance to show what runs. In this example the host enforces the verdict: it validates the candidate request, replaces the arguments, and calls <code>send_email</code> once. The interceptor does not send anything, and the original account number never reaches the tool.</p>
+    <p class="small muted">Spec: &sect;5.1.2.4 Transform Verdict, &sect;5.2 hook responses, &sect;6.1 verdict enforcement.</p>
+  </aside>
+</section>
+
+<!-- ============ 9. Liftable deny ============ -->
+<section class="slide" data-title="Liftable deny">
+  <div class="kicker">Verdicts</div>
+  <h2>Liftable deny: escalation without an open state</h2>
+  <p class="lede">A deny carrying an <code>approval</code> block is denied as-is, unless an approval resolver lifts it.</p>
+  <div class="body row" style="gap:28px; align-items:flex-start">
+    <svg width="660" height="340" viewBox="0 0 660 340" role="img" aria-label="A deny with approval goes to the approval resolver. Approve gives allow. Reject, unresolved, or failure keeps the deny. With no resolver, it's a plain deny.">
+      <rect class="fill-lift" x="0" y="126" width="180" height="68" rx="12"/>
+      <text x="90" y="156" text-anchor="middle" class="t-b">deny + approval</text>
+      <text x="90" y="176" text-anchor="middle" class="t-xs t-muted">combined verdict</text>
+      <path class="ln ln-accent" d="M180 160 L226 160" marker-end="url(#ah-accent)"/>
+      <rect class="node-accent" x="228" y="126" width="170" height="68" rx="12"/>
+      <text x="313" y="156" text-anchor="middle" class="t-b">Approval resolver</text>
+      <text x="313" y="176" text-anchor="middle" class="t-xs t-muted">e.g. ticket or chat approval</text>
+      <g data-step="1">
+        <path class="ln ln-allow" d="M398 148 C 414 148, 414 56, 430 56" marker-end="url(#ah-allow)"/>
+        <path class="ln ln-deny" d="M398 160 L430 160" marker-end="url(#ah-deny)"/>
+        <path class="ln ln-deny" d="M398 172 C 414 172, 414 264, 430 264" marker-end="url(#ah-deny)"/>
+        <rect class="fill-allow" x="432" y="28" width="228" height="56" rx="10"/>
+        <text x="448" y="52" class="t-b">allow: action proceeds</text>
+        <text x="448" y="72" class="t-xs t-muted">outcome: approve</text>
+        <rect class="fill-deny" x="432" y="132" width="228" height="56" rx="10"/>
+        <text x="448" y="156" class="t-b">deny stands</text>
+        <text x="448" y="176" class="t-xs t-muted">outcome: reject</text>
+        <rect class="fill-deny" x="432" y="236" width="228" height="56" rx="10"/>
+        <text x="448" y="260" class="t-b">deny (fails closed)</text>
+        <text x="448" y="280" class="t-xs t-muted">unresolved, failed, or identity mismatch</text>
+      </g>
+      <g data-step="2">
+        <path class="ln ln-deny ln-dash" d="M90 194 L90 262" marker-end="url(#ah-deny)"/>
+        <text x="100" y="234" class="t-xs t-muted">no resolver registered</text>
+        <rect class="fill-deny" x="0" y="264" width="180" height="56" rx="10"/>
+        <text x="90" y="288" text-anchor="middle" class="t-b">plain deny</text>
+        <text x="90" y="308" text-anchor="middle" class="t-xs t-muted">still conformant</text>
+      </g>
+    </svg>
+    <div class="col fill" style="gap:14px">
+<pre class="code xs">{ "verdict": {
+    "decision": "deny",
+    "reason": "email.external_recipient",
+    "message": "A manager must approve external email.",
+»   "approval": {}
+} }</pre>
+      <ul class="list tight" data-step="3">
+        <li><b>Fail closed by construction:</b> unless approved, it's a deny</li>
+        <li><b>Identity check:</b> a content-derived identity can bind approval to what the approver saw</li>
+        <li>Never consulted at <code>agent_shutdown</code> or in evaluate-only mode</li>
+        <li>Severity aggregation ranks plain deny above liftable deny</li>
+        <li>When the resolver is consulted is set by the composition profile</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Verdicts</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Escalation used to be its own decision, which created an in-between state a host had to remember not to proceed from. Now it's a deny with an <code>approval</code> block, so an unhandled escalation is simply a deny.</p>
+    <p><b>Step 1:</b> the resolver can approve (an allow substitutes for the deny), reject, or fail to decide. Anything other than approve fails closed with a <code>host_error</code> reason.</p>
+    <p><b>Step 2:</b> a host with no resolver enforces it as a plain deny. That's conformant, not an error.</p>
+    <p><b>Step 3:</b> the resolution must echo the request's <code>context_identity</code> byte for byte. Content binding depends on the selected identity provider; null echoes null and provides no content-derived replay protection.</p>
+    <p class="small muted">Spec: &sect;5.1.1 Decision semantics, &sect;9 Approval seam, &sect;7.6 Approval substitution.</p>
+  </aside>
+</section>
+
+<!-- ============ 8. Many interceptors, one decision ============ -->
+<section class="slide" data-title="Many interceptors, one decision">
+  <div class="kicker">Interceptor Composition</div>
+  <h2>Many interceptors, one decision</h2>
+  <p class="lede">Each interception point can bind several interceptors. A declared profile tells the host how to evaluate them and reach one decision.</p>
+  <div class="body row" style="gap:28px; align-items:flex-start">
+    <svg width="760" height="330" viewBox="0 0 760 330" role="img" aria-label="Three interceptor verdicts combined into one under parallel/strictest">
+      <!-- context -->
+      <rect class="node" x="0" y="125" width="130" height="80" rx="12"/>
+      <text x="65" y="160" text-anchor="middle" class="t-b">Context</text>
+      <text x="65" y="182" text-anchor="middle" class="t-xs t-mono t-muted">pre_tool_call</text>
+      <path class="ln" d="M130,165 C155,165 155,50 180,50" marker-end="url(#ah)"/>
+      <path class="ln" d="M130,165 L180,165" marker-end="url(#ah)"/>
+      <path class="ln" d="M130,165 C155,165 155,280 180,280" marker-end="url(#ah)"/>
+      <!-- interceptors -->
+      <rect class="node" x="180" y="14" width="232" height="72" rx="12"/>
+      <text x="196" y="42" class="t-b">rate-limiter</text><text x="398" y="42" text-anchor="end" class="t-xs t-mono t-soft">#0</text>
+      <rect class="fill-allow" x="196" y="52" width="70" height="24" rx="6"/><text x="231" y="69" text-anchor="middle" class="t-sm t-b">allow</text>
+
+      <rect class="node" x="180" y="129" width="232" height="72" rx="12"/>
+      <text x="196" y="157" class="t-b">redactor</text><text x="398" y="157" text-anchor="end" class="t-xs t-mono t-soft">#1</text>
+      <rect class="fill-xf" x="196" y="167" width="92" height="24" rx="6"/><text x="242" y="184" text-anchor="middle" class="t-sm t-b">transform</text>
+
+      <rect class="node" x="180" y="244" width="232" height="72" rx="12"/>
+      <text x="196" y="272" class="t-b">email-policy</text><text x="398" y="272" text-anchor="end" class="t-xs t-mono t-soft">#2</text>
+      <rect class="fill-lift" x="196" y="282" width="130" height="24" rx="6"/><text x="261" y="299" text-anchor="middle" class="t-sm t-b">deny + approval</text>
+      <!-- into combine -->
+      <path class="ln" d="M412,50 C436,50 436,145 456,145" marker-end="url(#ah)"/>
+      <path class="ln" d="M412,165 L456,165" marker-end="url(#ah)"/>
+      <path class="ln" d="M412,280 C436,280 436,185 456,185" marker-end="url(#ah)"/>
+      <rect class="node-accent" x="456" y="105" width="150" height="120" rx="14"/>
+      <text x="531" y="158" text-anchor="middle" class="t-b t-lg">Combine</text>
+      <text x="531" y="182" text-anchor="middle" class="t-xs t-mono">parallel/strictest</text>
+      <!-- result -->
+      <g data-step="1">
+        <path class="ln ln-accent" d="M606,165 L632,165" marker-end="url(#ah-accent)"/>
+        <rect class="fill-lift" x="632" y="120" width="128" height="90" rx="12"/>
+        <text x="696" y="152" text-anchor="middle" class="t-xs t-soft">combined</text>
+        <text x="696" y="174" text-anchor="middle" class="t-sm t-b">deny + approval</text>
+        <text x="696" y="195" text-anchor="middle" class="t-xs t-mono">decided_by: 2</text>
+      </g>
+    </svg>
+    <div class="col fill" style="gap:8px">
+      <div class="label">Severity aggregation (highest wins)</div>
+      <div class="vrow"><span><span class="idx">1</span>Deny</span><span class="v v-deny">deny</span></div>
+      <div class="vrow"><span><span class="idx">2</span>Liftable deny</span><span class="v v-lift">deny + approval</span></div>
+      <div class="vrow"><span><span class="idx">3</span>Transform</span><span class="v v-xf">transform</span></div>
+      <div class="vrow"><span><span class="idx">4</span>Allow</span><span class="v v-allow">allow</span></div>
+      <div class="callout small" data-step="1" style="margin-top:8px">The liftable deny outranks the transform, so the action waits on approval. Ties between blocks go to the lowest registration index, which becomes <code>decided_by</code>.</div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Interceptor Composition</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Real deployments stack controls: a rate limiter, a redactor, a policy check. The host needs one answer.</p>
+    <p>This diagram uses parallel/strictest. Severity aggregation ranks deny, liftable deny, transform, then allow. Here the email policy's liftable deny wins. Losing transforms are not applied, including after approval. First-deny and unanimous have their own rules, covered next.</p>
+    <p>Metadata is unioned: warnings from every verdict, result labels from the permit verdicts.</p>
+    <p>Two policies are explicitly rejected. Quorum lets n&minus;k controls be silently overridden. Most-permissive-wins lets one permissive interceptor bypass every other control.</p>
+    <p class="small muted">Spec: &sect;5.1 severity, &sect;7.2 profiles, &sect;7.3 aggregation.</p>
+  </aside>
+</section>
+
+<!-- ============ 9. Sequential composition ============ -->
+<section class="slide" data-title="Sequential composition">
+  <div class="kicker">Interceptor Composition</div>
+  <h2>Sequential: each control sees the previous transform</h2>
+  <p class="lede">Interceptors run in binding order. In enforce mode, transformed content flows into the next control.</p>
+  <div class="body col" style="gap:16px">
+    <div class="card">
+      <svg width="1108" height="144" viewBox="0 0 1108 144" role="img" aria-label="Original request flows to a budget control, then a redactor, then a classifier that evaluates the redacted content and denies">
+        <rect class="node-soft" x="0" y="48" width="174" height="62" rx="10"/><text x="87" y="84" text-anchor="middle" class="t-b">Original request</text>
+        <path class="ln" d="M174 79 H250" marker-end="url(#ah)"/>
+        <rect class="fill-allow" x="254" y="48" width="194" height="62" rx="10"/><text x="351" y="73" text-anchor="middle" class="t-b">1. Budget</text><text x="351" y="96" text-anchor="middle" class="t-sm">allow</text>
+        <path class="ln" d="M448 79 H524" marker-end="url(#ah)"/>
+        <rect class="fill-xf" x="528" y="48" width="210" height="62" rx="10"/><text x="633" y="73" text-anchor="middle" class="t-b">2. Redactor</text><text x="633" y="96" text-anchor="middle" class="t-sm">transform</text>
+        <path class="ln ln-xf" d="M738 79 H872" marker-end="url(#ah-xf)"/>
+        <text x="805" y="39" text-anchor="middle" class="t-sm t-accent">redacted request</text>
+        <rect class="fill-deny" x="876" y="48" width="232" height="62" rx="10"/><text x="992" y="73" text-anchor="middle" class="t-b">3. Classifier</text><text x="992" y="96" text-anchor="middle" class="t-sm">deny</text>
+      </svg>
+    </div>
+    <div class="grid g2" data-step="1">
+      <div class="card">
+        <h3><code>sequential/first_deny</code></h3>
+        <p>Stop at the first deny; later controls do not run. If approved, <code>on_approval</code> either <b>stops</b> the chain (default) or <b>resumes</b> it.</p>
+        <p class="small muted" style="margin-top:12px">Use when early blocking is the desired behavior.</p>
+      </div>
+      <div class="card">
+        <h3><code>sequential/run_all</code></h3>
+        <p>Continue after interceptor denies. Evaluate all controls in order, then take the strictest verdict.</p>
+        <p class="small muted" style="margin-top:12px">Use when the full set of control results matters.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Interceptor Composition</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Order is a product choice: a classifier after a redactor evaluates the replacement, not the original. This fold-through happens only in enforce mode. Evaluation-only validates transforms but leaves later controls on the original input.</p>
+    <p>First-deny is the default profile, but hosts declare supported profiles and no one profile is mandatory for every host. With on_approval resume, each later liftable deny is consulted in turn. With stop, later controls remain skipped.</p>
+    <p>Run-all continues after ordinary interceptor denies. A failed fold-transform is the important exception: both sequential profiles short-circuit rather than dispatching an invalid state. Run-all consults approval at most once, only when every deny is liftable.</p>
+    <p class="small muted">Spec: &sect;7.2 profiles and defaults, &sect;7.4 Sequential profiles.</p>
+  </aside>
+</section>
+
+<!-- ============ 10. Parallel composition ============ -->
+<section class="slide" data-title="Parallel composition">
+  <div class="kicker">Interceptor Composition</div>
+  <h2>Parallel: independent judgments on one snapshot</h2>
+  <p class="lede">Every interceptor receives the original request in isolation. No control observes another control's transform.</p>
+  <div class="body col" style="gap:16px">
+    <svg width="1152" height="166" viewBox="0 0 1152 166" role="img" aria-label="All three interceptors evaluate the original request independently: Budget returns allow, Redactor returns transform, and Policy returns deny. The host combines their verdicts by profile.">
+      <rect class="node-soft" x="0" y="49" width="220" height="70" rx="12"/><text x="110" y="80" text-anchor="middle" class="t-b">Original request</text><text x="110" y="101" text-anchor="middle" class="t-sm t-muted">isolated copies</text>
+      <path class="ln" d="M220 84 C280 84 280 26 340 26" marker-end="url(#ah)"/><path class="ln" d="M220 84 H340" marker-end="url(#ah)"/><path class="ln" d="M220 84 C280 84 280 142 340 142" marker-end="url(#ah)"/>
+      <rect class="fill-allow" x="344" y="4" width="300" height="44" rx="10"/><text x="494" y="32" text-anchor="middle"><tspan class="t-b">Budget:</tspan> allow</text>
+      <rect class="fill-xf" x="344" y="62" width="300" height="44" rx="10"/><text x="494" y="90" text-anchor="middle"><tspan class="t-b">Redactor:</tspan> transform</text>
+      <rect class="fill-deny" x="344" y="120" width="300" height="44" rx="10"/><text x="494" y="148" text-anchor="middle"><tspan class="t-b">Policy:</tspan> deny</text>
+      <path class="ln" d="M644 26 C714 26 714 84 784 84" marker-end="url(#ah)"/><path class="ln" d="M644 84 H784" marker-end="url(#ah)"/><path class="ln" d="M644 142 C714 142 714 84 784 84" marker-end="url(#ah)"/>
+      <rect class="node-accent" x="788" y="49" width="210" height="70" rx="12"/><text x="893" y="90" text-anchor="middle" class="t-b">Combine by profile</text>
+      <path class="ln ln-accent" d="M998 84 H1084" marker-end="url(#ah-accent)"/><circle class="dot-deny" cx="1110" cy="84" r="14"><title>Deny</title></circle>
+    </svg>
+    <div class="grid g2" data-step="1">
+      <div class="card">
+        <h3><code>parallel/strictest</code></h3>
+        <p>Take the highest-severity verdict. A single winning transform can apply; two or more competing transforms conflict.</p>
+        <p class="small muted" style="margin-top:12px"><code>on_transform_conflict</code>: <b>deny</b> (default) or seek <b>approval</b>. Approval uses the original, not either replacement.</p>
+      </div>
+      <div class="card">
+        <h3><code>parallel/unanimous</code></h3>
+        <p>Allow only when every interceptor allows. Any deny or transform is a disagreement.</p>
+        <p class="small muted" style="margin-top:12px"><code>on_disagreement</code>: <b>deny</b> (default) or seek <b>approval</b>. Approval does not apply the proposed transforms.</p>
+      </div>
+    </div>
+    <div class="callout" data-step="2"><b>Parallel is an evaluation model, not a scheduling requirement.</b> A host can execute these independent evaluations sequentially or concurrently.</div>
+  </div>
+  <div class="foot"><span class="area">Interceptor Composition</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Choose snapshot evaluation when controls should independently inspect the same original content. This differs from sequential composition, where a prior transform changes what the next control sees.</p>
+    <p>Strictest only considers transform conflicts if the severity winner is transform. A deny already outranks those transformations. Even two identical independently proposed replacements count as multiple transforms rather than a merge.</p>
+    <p>Unanimous treats any non-allow as disagreement. The configured approval path can replace the synthesized disagreement deny; this differs from ordinary severity aggregation. Both parallel profiles dispatch all bound interceptors.</p>
+    <p class="small muted">Spec: &sect;7.2 profile model, &sect;7.3 aggregation, &sect;7.5 Parallel profiles.</p>
+  </aside>
+</section>
+
+<!-- ============ 11. End-to-end ============ -->
+<section class="slide" data-title="End to end">
+  <div class="kicker">Walkthrough</div>
+  <h2>One session, ten interceptions</h2>
+  <p class="lede" style="margin-top:6px">A fictional support agent emails a forecast. Press &rarr; to step through the hooks; request snippets omit shared fields.</p>
+  <div class="body col" style="gap:16px; margin-top:16px">
+    <svg width="1152" height="66" viewBox="0 0 1152 66" role="img" aria-label="Timeline of ten interception points in session s-42">
+      <!-- node 0 -->
+      <rect class="node-soft" x="0" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="0" y="2" width="108" height="62" rx="10" data-step="1"/>
+      <text x="10" y="18" class="t-xs t-mono t-soft">#0</text><text x="54" y="38" text-anchor="middle" class="t-xs t-mono">agent_startup</text>
+      <text x="54" y="56" text-anchor="middle" class="t-xs t-b" data-step="1">allow</text>
+      <rect class="tl-cur" x="0" y="2" width="108" height="62" rx="10" data-step="1" data-until="1"/>
+      <!-- node 1 -->
+      <rect class="node-soft" x="116" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-xf" x="116" y="2" width="108" height="62" rx="10" data-step="2"/>
+      <text x="126" y="18" class="t-xs t-mono t-soft">#1</text><text x="170" y="38" text-anchor="middle" class="t-xs t-mono">input</text>
+      <text x="170" y="56" text-anchor="middle" class="t-xs t-b" data-step="2">transform</text>
+      <rect class="tl-cur" x="116" y="2" width="108" height="62" rx="10" data-step="2" data-until="2"/>
+      <!-- node 2 -->
+      <rect class="node-soft" x="232" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="232" y="2" width="108" height="62" rx="10" data-step="3"/>
+      <text x="242" y="18" class="t-xs t-mono t-soft">#2</text><text x="286" y="38" text-anchor="middle" class="t-xs t-mono">pre_model_call</text>
+      <text x="286" y="56" text-anchor="middle" class="t-xs t-b" data-step="3">allow</text>
+      <rect class="tl-cur" x="232" y="2" width="108" height="62" rx="10" data-step="3" data-until="3"/>
+      <!-- node 3 -->
+      <rect class="node-soft" x="348" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="348" y="2" width="108" height="62" rx="10" data-step="4"/>
+      <text x="358" y="18" class="t-xs t-mono t-soft">#3</text><text x="402" y="38" text-anchor="middle" class="t-xs t-mono">post_model_call</text>
+      <text x="402" y="56" text-anchor="middle" class="t-xs t-b" data-step="4">allow</text>
+      <rect class="tl-cur" x="348" y="2" width="108" height="62" rx="10" data-step="4" data-until="4"/>
+      <!-- node 4 -->
+      <rect class="node-soft" x="464" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="464" y="2" width="108" height="62" rx="10" data-step="5"/>
+      <text x="474" y="18" class="t-xs t-mono t-soft">#4</text><text x="518" y="38" text-anchor="middle" class="t-xs t-mono">pre_tool_call</text>
+      <text x="518" y="56" text-anchor="middle" class="t-xs t-b" data-step="5">allow (approved)</text>
+      <rect class="tl-cur" x="464" y="2" width="108" height="62" rx="10" data-step="5" data-until="5"/>
+      <!-- node 5 -->
+      <rect class="node-soft" x="580" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="580" y="2" width="108" height="62" rx="10" data-step="6"/>
+      <text x="590" y="18" class="t-xs t-mono t-soft">#5</text><text x="634" y="38" text-anchor="middle" class="t-xs t-mono">post_tool_call</text>
+      <text x="634" y="56" text-anchor="middle" class="t-xs t-b" data-step="6">allow</text>
+      <rect class="tl-cur" x="580" y="2" width="108" height="62" rx="10" data-step="6" data-until="6"/>
+      <!-- node 6 -->
+      <rect class="node-soft" x="696" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="696" y="2" width="108" height="62" rx="10" data-step="7"/>
+      <text x="706" y="18" class="t-xs t-mono t-soft">#6</text><text x="750" y="38" text-anchor="middle" class="t-xs t-mono">pre_model_call</text>
+      <text x="750" y="56" text-anchor="middle" class="t-xs t-b" data-step="7">allow</text>
+      <rect class="tl-cur" x="696" y="2" width="108" height="62" rx="10" data-step="7" data-until="7"/>
+      <!-- node 7 -->
+      <rect class="node-soft" x="812" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="812" y="2" width="108" height="62" rx="10" data-step="8"/>
+      <text x="822" y="18" class="t-xs t-mono t-soft">#7</text><text x="866" y="38" text-anchor="middle" class="t-xs t-mono">post_model_call</text>
+      <text x="866" y="56" text-anchor="middle" class="t-xs t-b" data-step="8">allow</text>
+      <rect class="tl-cur" x="812" y="2" width="108" height="62" rx="10" data-step="8" data-until="8"/>
+      <!-- node 8 -->
+      <rect class="node-soft" x="928" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="928" y="2" width="108" height="62" rx="10" data-step="9"/>
+      <text x="938" y="18" class="t-xs t-mono t-soft">#8</text><text x="982" y="38" text-anchor="middle" class="t-xs t-mono">output</text>
+      <text x="982" y="56" text-anchor="middle" class="t-xs t-b" data-step="9">allow</text>
+      <rect class="tl-cur" x="928" y="2" width="108" height="62" rx="10" data-step="9" data-until="9"/>
+      <!-- node 9 -->
+      <rect class="node-soft" x="1044" y="2" width="108" height="62" rx="10"/>
+      <rect class="fill-allow" x="1044" y="2" width="108" height="62" rx="10" data-step="10"/>
+      <text x="1054" y="18" class="t-xs t-mono t-soft">#9</text><text x="1098" y="38" text-anchor="middle" class="t-xs t-mono">agent_shutdown</text>
+      <text x="1098" y="56" text-anchor="middle" class="t-xs t-b" data-step="10">allow</text>
+      <rect class="tl-cur" x="1044" y="2" width="108" height="62" rx="10" data-step="10" data-until="10"/>
+    </svg>
+
+    <div class="stack">
+      <!-- step 0: setup -->
+      <div class="e2e" data-until="0">
+        <div class="col" style="gap:8px">
+          <div class="label">The prompt (to support-agent, session s-42)</div>
+          <div class="quote">&ldquo;Send Q3 forecast to sam@fabrikam.com. SSN 123-45-6789&rdquo;</div>
+          <p class="small muted" style="margin-top:6px">Two problems hide in this request: personal data in the prompt, and an external recipient.</p>
+        </div>
+        <div class="col" style="gap:8px">
+          <div class="label">Bindings, in registration order</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="small muted">all except<br>post_model_call</span></div>
+          <div class="vrow"><span><span class="idx">1</span>pii</span><span class="small muted">input, post_model_call,<br>output</span></div>
+          <div class="vrow"><span><span class="idx">2</span>email-policy</span><span class="small muted">pre_tool_call</span></div>
+          <div class="vrow"><span><span class="idx">3</span>secret-scan<span class="why">on_error: continue</span></span><span class="small muted">post_tool_call</span></div>
+        </div>
+        <div class="col" style="gap:8px">
+          <div class="label">Settings</div>
+          <ul class="list tight">
+            <li><code>sequential/first_deny</code>, <code>on_approval: resume</code></li>
+            <li>Mode: <code>enforce</code></li>
+            <li>Resolver: human-in-the-loop approval</li>
+            <li>Failure default: <code>on_error: deny</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- step 1 -->
+      <div class="e2e" data-step="1" data-until="1">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 0</div>
+<pre class="code xs">{
+» "interception_point": "agent_startup",
+  "sequence": 0,
+  "agent": { "id": "support-agent", "framework": "contoso_host" },
+  "session": { "id": "s-42" },
+  "agent_init": { "tools_registered": ["send_email"] }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Session s-42 opens</li><li>Startup can allow or deny, never transform</li><li>Record #0 written</li></ul></div>
+      </div>
+
+      <!-- step 2 -->
+      <div class="e2e" data-step="2" data-until="2">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 1</div>
+<pre class="code xs">{
+  "interception_point": "input",
+  "sequence": 1,
+  "input": {
+    "role": "user",
+»   "content": "Send Q3 forecast to sam@fabrikam.com. SSN 123-45-6789"
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="vrow"><span><span class="idx">1</span>pii<span class="why">input.content: "&hellip; SSN [REDACTED]"</span></span><span class="v v-xf">transform</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-xf v-lg">transform</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Replaces <code>input</code> before downstream model processing</li><li>The model never receives the SSN in this example</li><li>Record #1: content-derived identities differ</li></ul></div>
+      </div>
+
+      <!-- step 3 -->
+      <div class="e2e" data-step="3" data-until="3">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 2</div>
+<pre class="code xs">{
+  "interception_point": "pre_model_call",
+  "sequence": 2,
+  "model": { "id": "example-model" },
+  "messages": [
+    { "role": "user",
+»     "content": "Send Q3 forecast to sam@fabrikam.com. SSN [REDACTED]" }
+  ]
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Checks the budget before generating tokens</li><li>Calls the model with the redacted messages</li></ul></div>
+      </div>
+
+      <!-- step 4 -->
+      <div class="e2e" data-step="4" data-until="4">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 3</div>
+<pre class="code xs">{
+  "interception_point": "post_model_call",
+  "sequence": 3,
+  "model": { "id": "example-model" },
+  "response": {
+    "content": "",
+»   "tool_calls": [ { "id": "c1", "name": "send_email",
+      "args": { "to": "sam@fabrikam.com", "body": "Q3 forecast ..." } } ],
+    "finish_reason": "tool_calls"
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>pii</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Checks the model response for personal data</li><li>The model wants to call <code>send_email</code></li><li>The tool call gets its own pre and post pair</li></ul></div>
+      </div>
+
+      <!-- step 5 -->
+      <div class="e2e" data-step="5" data-until="5">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 4</div>
+<pre class="code xs">{
+  "interception_point": "pre_tool_call",
+  "sequence": 4,
+  "tool_call": {
+    "id": "c1",
+    "name": "send_email",
+»   "args": { "to": "sam@fabrikam.com", "body": "Q3 forecast ..." }
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="vrow"><span><span class="idx">1</span>email-policy<span class="why">email.external_recipient</span></span><span class="v v-lift">deny + approval</span></div>
+          <div class="vrow resolver"><span>human-in-the-loop approval</span><span class="v v-allow">approve</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div class="row center" style="gap:10px"><span class="v v-allow v-lg">allow</span><code>resolved_by: approval</code></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Sends the resolver the context and its identity</li><li>A human reviewer approves the email, lifting the deny</li><li><code>send_email</code> runs</li></ul></div>
+      </div>
+
+      <!-- step 6 -->
+      <div class="e2e" data-step="6" data-until="6">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 5</div>
+<pre class="code xs">{
+  "interception_point": "post_tool_call",
+  "sequence": 5,
+  "tool_call": { "id": "c1", "name": "send_email", "args": { ... } },
+  "tool_result": {
+»   "value": { "status": "sent", "message_id": "m-981" },
+    "is_error": false
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="vrow"><span><span class="idx">1</span>secret-scan<span class="why">on_error: continue</span></span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Returns the result to the model</li><li>Had secret-scan timed out, it would become a recorded allow with a warning</li></ul></div>
+      </div>
+
+      <!-- step 7 -->
+      <div class="e2e" data-step="7" data-until="7">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 6</div>
+<pre class="code xs">{
+  "interception_point": "pre_model_call",
+  "sequence": 6,
+  "model": { "id": "example-model" },
+  "messages": [
+    // Earlier redacted conversation omitted.
+    { "role": "tool", "tool_call_id": "c1",
+»     "content": { "status": "sent", "message_id": "m-981" } }
+  ]
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Checks the remaining budget before another model call</li><li>Sends the conversation, including the tool result, to the model</li></ul></div>
+      </div>
+
+      <!-- step 8 -->
+      <div class="e2e" data-step="8" data-until="8">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 7</div>
+<pre class="code xs">{
+  "interception_point": "post_model_call",
+  "sequence": 7,
+  "model": { "id": "example-model" },
+  "response": {
+»   "content": "Done. I sent the Q3 forecast to Sam.",
+    "tool_calls": [],
+    "finish_reason": "stop"
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>pii</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Checks the generated response for personal data</li><li>No more tool calls, so the turn heads to output</li></ul></div>
+      </div>
+
+      <!-- step 9 -->
+      <div class="e2e" data-step="9" data-until="9">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 8</div>
+<pre class="code xs">{
+  "interception_point": "output",
+  "sequence": 8,
+  "output": {
+»   "content": "Done. I sent the Q3 forecast to Sam."
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="vrow"><span><span class="idx">1</span>pii</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>Releases the buffered output to the caller</li><li>What's released is exactly what was verdicted</li></ul></div>
+      </div>
+
+      <!-- step 10 -->
+      <div class="e2e" data-step="10" data-until="10">
+        <div class="col" style="gap:6px"><div class="label">Request &middot; sequence 9</div>
+<pre class="code xs">{
+  "interception_point": "agent_shutdown",
+  "sequence": 9,
+  "summary": {
+    "reason": "completed",
+»   "tool_calls": 1,
+    "errors": 0,
+    "duration_seconds": 9
+  }
+}</pre></div>
+        <div class="col" style="gap:8px"><div class="label">Interceptors at this point</div>
+          <div class="vrow"><span><span class="idx">0</span>budget</span><span class="v v-allow">allow</span></div>
+          <div class="label" style="margin-top:8px">Combined</div><div><span class="v v-allow v-lg">allow</span></div></div>
+        <div class="col" style="gap:6px"><div class="label">Host</div><ul class="list tight">
+          <li>The session closes</li><li>10 records, sequence 0&ndash;9, one transform, one approval</li><li>No transforms or approvals at shutdown</li></ul></div>
+      </div>
+      <div class="grid g3" data-step="11">
+        <div class="card">
+          <div class="label">#1 &middot; Input</div>
+          <span class="v v-xf v-lg">Transform</span>
+          <h3 style="margin-top:16px">Redact before the model</h3>
+          <p style="margin-top:10px">The input interceptor replaces the complete input. Downstream model requests contain the redacted text.</p>
+        </div>
+        <div class="card">
+          <div class="label">#4 &middot; Pre-tool call</div>
+          <span class="v v-lift v-lg">Deny + approval</span>
+          <h3 style="margin-top:16px">Pause before the side effect</h3>
+          <p style="margin-top:10px">External email waits for human-in-the-loop approval. Approval lifts the deny so the tool can run.</p>
+        </div>
+        <div class="card">
+          <div class="label">#8 &middot; Output</div>
+          <span class="v v-allow v-lg">Allow</span>
+          <h3 style="margin-top:16px">Release checked content</h3>
+          <p style="margin-top:10px">The final response is checked and released. Ten hook emissions leave ten correlated records.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Points, verdicts, and composition together</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>This ties the first two areas together before we get into composition. All people, domains, interceptors, and payloads are fictional illustrations. Snippets show relevant fields rather than complete wire messages.</p>
+    <p><b>Setup:</b> four bindings. Budget runs at every point except post_model_call; pii checks input, model responses, and output; email-policy runs before tools; and secret-scan runs after tools (allowed to fail open). Composition is sequential first-deny with approvals that resume the fold.</p>
+    <p><b>#2 and #6:</b> budget checks happen before the model generates tokens. <b>#3 and #7:</b> pii checks the generated model response. Each pre-model and post-model hook has its own step and record.</p>
+    <p><b>#1:</b> pii transforms the input, so the SSN never reaches the model. <b>#4:</b> email-policy returns a liftable deny for an external recipient. A human reviewer approves the email, and the host sends it. Everything else allows.</p>
+    <p>Every step writes one record. We'll come back to record #4 on the audit records slide.</p>
+    <p class="small muted">Spec: &sect;3.1 ordering, &sect;4 contexts, &sect;5.2 transforms, &sect;7.4 sequential profiles, &sect;9 approval seam.</p>
+  </aside>
+</section>
+
+<!-- ============ 12. Audit records ============ -->
+<section class="slide" data-title="Audit records">
+  <div class="kicker">Interception &amp; audit records</div>
+  <h2>One record per interception</h2>
+  <p class="lede">Every hook emission produces a decision record, correlated by session and sequence, without copying request or replacement payloads.</p>
+  <div class="body row" style="gap:24px; align-items:flex-start">
+    <div class="stack" style="width:340px; flex:none">
+      <div class="col" style="gap:4px" data-until="0">
+        <div class="label">Session s-42</div>
+        <div class="vrow sm"><span><span class="idx">#0</span><span class="mono">agent_startup</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm"><span><span class="idx">#1</span><span class="mono">input</span></span><span class="v v-xf sm">transform</span></div>
+        <div class="vrow sm"><span><span class="idx">#2</span><span class="mono">pre_model_call</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm"><span><span class="idx">#3</span><span class="mono">post_model_call</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm resolver"><span><span class="idx">#4</span><span class="mono">pre_tool_call</span></span><span class="v v-allow sm">allow &middot; approved</span></div>
+        <div class="vrow sm"><span><span class="idx">#5</span><span class="mono">post_tool_call</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm"><span><span class="idx">#6</span><span class="mono">pre_model_call</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm"><span><span class="idx">#7</span><span class="mono">post_model_call</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm"><span><span class="idx">#8</span><span class="mono">output</span></span><span class="v v-allow sm">allow</span></div>
+        <div class="vrow sm"><span><span class="idx">#9</span><span class="mono">agent_shutdown</span></span><span class="v v-allow sm">allow</span></div>
+      </div>
+      <div class="col" style="gap:12px" data-step="1">
+        <div class="card" style="padding:14px 16px">
+          <div class="label">Captured</div>
+          <ul class="list tight">
+            <li>Combined verdict, reason, short message</li>
+            <li>Per-control summaries where required</li>
+            <li>Composition settings and approval outcome</li>
+            <li>Optional before/after content identities</li>
+            <li>Session, sequence, and optional trace IDs</li>
+          </ul>
+        </div>
+        <div class="card soft-card" style="padding:14px 16px">
+          <div class="label">Excluded as payload fields</div>
+          <ul class="list tight">
+            <li>Request content, arguments, and results</li>
+            <li>Transform replacements and approval details</li>
+          </ul>
+          <p class="small muted" style="margin-top:8px">Authors still need care with reasons, messages, and evidence.</p>
+        </div>
+      </div>
+    </div>
+    <div class="col fill" style="gap:6px">
+      <div class="label">Record #4</div>
+<pre class="code sm">{
+  "interception_point": "pre_tool_call",
+  "mode": "enforce",
+» "verdict": { "decision": "allow", "reason": "manager_approved" },
+  "input_identity": "sha256:9f2c…41ad",
+  "enforced_identity": "sha256:9f2c…41ad",
+  "identity_provider": "jcs-sha256",
+  "session_id": "s-42",
+  "sequence": 4,
+  "decided_by": 1,
+  "composition": { "profile": "sequential/first_deny", "on_approval": "resume" },
+  "verdicts": [
+    { "index": 0, "decision": "allow", "name": "budget" },
+»   { "index": 1, "decision": "deny", "reason": "email.external_recipient",
+»       "name": "email-policy" }
+  ],
+  "fold_truncated": false,
+» "resolved_by": "approval",
+  "interceptors_registered": 2
+}</pre>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Interception &amp; audit records</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Here's record #4 from the walkthrough. It shows the combined allow, that it came from resolving the deny at index 1 through approval, the composition settings that were in force, and a summary of each interceptor's verdict.</p>
+    <p>Here the host uses content-derived identities. The displayed hashes are abbreviated illustrations. Identity is optional and may use a different provider or be null. A matching content-derived identity links decisions to content without storing that content.</p>
+    <p>The projected record drops context and transform payloads, strips approval details, and bounds messages and evidence. This does not sanitize sensitive information an interceptor deliberately puts into metadata.</p>
+    <p>Per-interceptor summaries are required in run-all and parallel profiles, and whenever a failure is substituted with allow; otherwise they are optional in first-deny. Host failures before a request can be emitted must fail the action closed in enforce mode, but their records are recommended, so this is not a guarantee of gap-free auditing.</p>
+    <p class="small muted">Spec: &sect;10.1 identity, &sect;10.3 interception record, &sect;14 payload rules.</p>
+  </aside>
+</section>
+<!-- ============ Appendix divider ============ -->
+<section class="slide" data-title="Appendix">
+  <div class="body col center" style="justify-content:center; text-align:center">
+    <h1>Appendix</h1>
+  </div>
+  <div class="foot"><span class="area">Developer appendix</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Developer reference material follows.</p>
+  </aside>
+</section>
+
+<!-- ============ Appendix: Request and verdict ============ -->
+<section class="slide" data-title="Developer appendix: request and verdict">
+  <div class="kicker">Developer appendix</div>
+  <h2>A request/verdict protocol at fixed points in the agent loop</h2>
+  <p class="lede">The host pauses at an interception point, sends a JSON context, and enforces the verdict it gets back.</p>
+  <div class="body col" style="gap:16px">
+    <div class="grid" style="grid-template-columns:230px 1fr 230px; gap:20px; align-items:stretch">
+      <div class="card accent-card">
+        <div class="label accent">Host</div>
+        <h3>Runs the agent</h3>
+        <p class="small muted" style="margin-top:6px">Frameworks, runtimes, gateways, harnesses</p>
+        <ul class="list tight" style="margin-top:14px">
+          <li>Calls out at each point</li>
+          <li>Waits for the verdict</li>
+          <li>Enforces it, or fails closed</li>
+          <li>Writes the record</li>
+        </ul>
+      </div>
+      <div class="col" style="gap:8px; min-width:0">
+        <div class="row center" style="gap:10px"><span class="arrow-label">Request</span><div class="arrow-r"></div><span class="small soft">host &rarr; interceptor</span></div>
+<pre class="code sm">{
+  "spec": "agent-hooks/draft",
+» "interception_point": "pre_tool_call",
+  "sequence": 4,
+  "agent": { "id": "support-agent", "framework": "contoso_host" },
+  "session": { "id": "s-42" },
+  "tool_call": {
+    "id": "c1",
+    "name": "send_email",
+    "args": { "to": "sam@fabrikam.com", "body": "Q3 forecast ..." }
+  }
+}</pre>
+        <div class="row center" style="gap:10px; margin-top:4px" data-step="1"><span class="small soft">interceptor &rarr; host</span><div class="arrow-l"></div><span class="arrow-label">Verdict</span></div>
+<pre class="code sm" data-step="1">{ "verdict": { "decision": "deny", "reason": "email.external_recipient" } }</pre>
+      </div>
+      <div class="card">
+        <div class="label">Interceptor</div>
+        <h3>Decides</h3>
+        <p class="small muted" style="margin-top:6px">Policy engines, content filters, rate limiters, approval gateways</p>
+        <ul class="list tight" style="margin-top:14px">
+          <li>Reads the context</li>
+          <li>Returns one verdict</li>
+          <li>Allow, deny, or transform</li>
+          <li>Proposes changes as transforms</li>
+        </ul>
+      </div>
+    </div>
+    <div class="row center" style="gap:10px; flex-wrap:wrap" data-step="2">
+      <span class="label" style="margin:0 6px 0 0">The spec defines</span>
+      <span class="chip">8 interception points</span>
+      <span class="chip">Hook-specific requests &amp; responses</span>
+      <span class="chip">Host obligations</span>
+      <span class="chip">4 composition profiles</span>
+      <span class="chip">Decision records</span>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Appendix &middot; Request and verdict</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>The core loop is simple. At a defined point, the host builds a JSON context (here a <code>pre_tool_call</code> for <code>send_email</code>), sends it to the interceptor, and waits.</p>
+    <p>The interceptor answers with a verdict. Here it's a deny with a machine-readable reason. The host then enforces it: the email is not sent.</p>
+    <p>The interceptor only returns data. Any change it wants is expressed as a transform verdict, which the host validates and applies.</p>
+    <p>Interceptors are registered with the host and trusted by it, so registering one is a meaningful grant (&sect;1.4).</p>
+    <p class="small muted">Illustrative tool and reason names. Spec: &sect;3 Interception points, &sect;4 Hooks Request, &sect;5 Hooks Responses &amp; Verdicts.</p>
+  </aside>
+</section>
+
+<!-- ============ Appendix: What Agent Hooks is not ============ -->
+<section class="slide" data-title="What it is not">
+  <div class="kicker">Appendix · Scope</div>
+  <h2>What Agent Hooks is not</h2>
+  <p class="lede">A narrow contract, deliberately. It says <i>where</i> and <i>how</i> a control decides, not <i>what</i> it decides.</p>
+  <div class="body col" style="gap:20px">
+    <div class="grid g3">
+      <div class="card">
+        <div class="label" style="color:var(--cp-danger)">Not</div>
+        <h3>A policy engine</h3>
+        <p class="small" style="margin-top:8px">It doesn't define how a verdict is computed. Policy languages, manifests, and lattices belong to interceptor specs such as the Agent Control Specification (ACS).</p>
+        <p class="small accent" style="margin-top:10px"><b>Policy engines plug in as interceptors.</b></p>
+      </div>
+      <div class="card">
+        <div class="label" style="color:var(--cp-danger)">Not</div>
+        <h3>A sandbox</h3>
+        <p class="small" style="margin-top:8px">It constrains a cooperating host inside the trust boundary. No process isolation, no interceptor authentication, no claim of complete mediation.</p>
+        <p class="small accent" style="margin-top:10px"><b>Conformance is not a security certification.</b></p>
+      </div>
+      <div class="card">
+        <div class="label" style="color:var(--cp-danger)">Not</div>
+        <h3>Telemetry</h3>
+        <p class="small" style="margin-top:8px">It's a control plane: every interceptor returns a verdict on the action's path. There's no passive observation, tracing, or metrics interface.</p>
+        <p class="small accent" style="margin-top:10px"><b>Audit records are a by-product of decisions.</b></p>
+      </div>
+    </div>
+    <div data-step="1">
+      <div class="label">Who builds what</div>
+      <div class="grid g3" style="margin-top:4px">
+        <div class="card soft-card">
+          <h3>Gateway &amp; harness developers</h3>
+          <p class="small muted" style="margin-top:6px">Build the <b>host</b> side: wire the points, enforce and compose verdicts, and write records. Declare the capabilities your host supports.</p>
+        </div>
+        <div class="card soft-card">
+          <h3>Interceptor developers</h3>
+          <p class="small muted" style="margin-top:6px">Accept hook-specific requests and return verdicts. Reuse controls across hosts with compatible capabilities and bindings.</p>
+        </div>
+        <div class="card soft-card">
+          <h3>Product &amp; platform owners</h3>
+          <p class="small muted" style="margin-top:6px">Choose which controls run where in a declaration document. Trial them in evaluate-only, then enforce.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Appendix · Scope</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Three boundaries set expectations early.</p>
+    <p><b>Policy:</b> Agent Hooks is the plumbing. How a verdict is computed belongs to interceptor specs. ACS is one example, and any policy engine can sit behind an interceptor.</p>
+    <p><b>Security:</b> The host is trusted. The spec constrains a cooperating host and doesn't claim every code path reaches an interception point.</p>
+    <p><b>Observability:</b> It's a control plane. Records exist because decisions were made, not as a tracing feed.</p>
+    <p class="small muted">Spec: &sect;1.1 Scope, &sect;1.4 Trust model and non-goals.</p>
+  </aside>
+</section>
+
+<!-- ============ Appendix: Sessions and concurrent tools ============ -->
+<section class="slide" data-title="Sessions and concurrent tools">
+  <div class="kicker">Appendix · Interception points</div>
+  <h2>One session, many turns and tool calls</h2>
+  <p class="lede">Startup and shutdown bracket the session. Within it, every turn and every tool call keeps its own interception.</p>
+  <div class="body grid g2" style="align-items:start">
+    <div class="card col" style="gap:10px">
+      <div class="label">Sessions</div>
+      <h3>Ordered by <code>sequence</code></h3>
+      <svg width="528" height="180" viewBox="0 0 333 128" role="img" aria-label="Ten ordered interception points within one session">
+        <line class="ln" x1="10" y1="56" x2="323" y2="56"/>
+        <circle class="dot-accent" cx="16" cy="56" r="7"/>
+        <circle class="node" cx="49" cy="56" r="6"/><circle class="node" cx="83" cy="56" r="6"/><circle class="node" cx="116" cy="56" r="6"/>
+        <circle class="node" cx="150" cy="56" r="6"/><circle class="node" cx="183" cy="56" r="6"/><circle class="node" cx="216" cy="56" r="6"/>
+        <circle class="node" cx="250" cy="56" r="6"/><circle class="node" cx="283" cy="56" r="6"/>
+        <circle class="dot-accent" cx="317" cy="56" r="7"/>
+        <text x="16" y="34" class="t-xs t-mono">agent_startup</text>
+        <text x="317" y="34" text-anchor="end" class="t-xs t-mono">agent_shutdown</text>
+        <g class="t-xs t-mono t-muted" text-anchor="middle">
+          <text x="16" y="82">0</text><text x="49" y="82">1</text><text x="83" y="82">2</text><text x="116" y="82">3</text><text x="150" y="82">4</text>
+          <text x="183" y="82">5</text><text x="216" y="82">6</text><text x="250" y="82">7</text><text x="283" y="82">8</text><text x="317" y="82">9</text>
+        </g>
+        <text x="166" y="114" text-anchor="middle" class="t-sm t-b">session.id = "s-42"</text>
+      </svg>
+      <ul class="list tight">
+        <li>Every request carries <code>session.id</code> and a <code>sequence</code></li>
+        <li><code>sequence</code> is unique and strictly increasing; it fixes audit order</li>
+        <li>Multi-turn: many input&nbsp;&rarr;&nbsp;output cycles per session</li>
+      </ul>
+    </div>
+    <div class="card col" style="gap:10px" data-step="1">
+      <div class="label">Parallel tool calls</div>
+      <h3>One pair per tool call</h3>
+      <svg width="528" height="180" viewBox="0 0 333 128" role="img" aria-label="One post_model_call fans out to two tool calls, each with its own pre and post">
+        <rect class="node" x="0" y="44" width="92" height="40" rx="8"/><text x="46" y="68" text-anchor="middle" class="t-xs t-mono">post_model</text>
+        <path class="ln" d="M92 58 L104 58 L104 26 L114 26" marker-end="url(#ah)"/>
+        <path class="ln" d="M92 70 L104 70 L104 102 L114 102" marker-end="url(#ah)"/>
+        <rect class="node" x="116" y="8" width="70" height="36" rx="8"/><text x="151" y="30" text-anchor="middle" class="t-xs t-mono">pre_tool</text>
+        <rect class="node-dash" x="198" y="8" width="54" height="36" rx="8"/><text x="225" y="30" text-anchor="middle" class="t-xs t-muted">c1</text>
+        <rect class="node" x="263" y="8" width="70" height="36" rx="8"/><text x="298" y="30" text-anchor="middle" class="t-xs t-mono">post_tool</text>
+        <rect class="node" x="116" y="84" width="70" height="36" rx="8"/><text x="151" y="106" text-anchor="middle" class="t-xs t-mono">pre_tool</text>
+        <rect class="node-dash" x="198" y="84" width="54" height="36" rx="8"/><text x="225" y="106" text-anchor="middle" class="t-xs t-muted">c2</text>
+        <rect class="node" x="263" y="84" width="70" height="36" rx="8"/><text x="298" y="106" text-anchor="middle" class="t-xs t-mono">post_tool</text>
+        <path class="ln-thin" d="M186 26 L198 26 M252 26 L263 26 M186 102 L198 102 M252 102 L263 102"/>
+        <text x="225" y="68" text-anchor="middle" class="t-xs t-muted">may interleave</text>
+      </svg>
+      <ul class="list tight">
+        <li>Each call gets its own <code>pre_tool_call</code> / <code>post_tool_call</code>, paired by <code>tool_call.id</code></li>
+        <li>A tool can't start until its <code>pre_tool_call</code> verdict is in</li>
+        <li>Stateful interceptors (budgets, rate limits) handle their own concurrency</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout" style="margin-bottom:8px">Concurrent <b>tool execution</b> is independent of parallel <b>verdict composition</b> at a single hook.</div>
+  <div class="foot"><span class="area">Appendix · Interception points</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p><b>Sessions:</b> every request carries a session id and a sequence number. Sequence numbers are unique and strictly increasing, assigned atomically, so records have a total order even under concurrency.</p>
+    <p><b>Parallel tools:</b> the contract is per tool call, not per batch. Different calls may interleave. Interceptors that keep state, like rate limiters, own their own synchronization.</p>
+    <p>The timeline illustrates hook order, not a fixed number of emissions per session. A session can contain many turns. A denied pre-tool call prevents execution and therefore has no post-tool emission.</p>
+    <p class="small muted">Spec: &sect;3.1 ordering, &sect;12.2 Parallel tool calls.</p>
+  </aside>
+</section>
+
+<!-- ============ Appendix: Streaming ============ -->
+<section class="slide" data-title="Streaming interception">
+  <div class="kicker">Appendix · Interception points</div>
+  <h2>Streaming: decide before release, by default</h2>
+  <p class="lede">Receiving model tokens and releasing content to a caller are different boundaries. Both need an explicit policy.</p>
+  <div class="body col" style="gap:20px">
+    <div class="card">
+      <div class="label">Default in enforce mode</div>
+      <svg width="1108" height="126" viewBox="0 0 1108 126" role="img" aria-label="Model chunks are assembled, checked at post_model_call, processed by the agent, checked at output, and only then released to the caller">
+        <rect class="node-soft" x="0" y="40" width="24" height="44" rx="5"/><rect class="node-soft" x="30" y="40" width="24" height="44" rx="5"/><rect class="node-soft" x="60" y="40" width="24" height="44" rx="5"/>
+        <text x="42" y="24" text-anchor="middle" class="t-sm t-muted">chunks</text>
+        <path class="ln" d="M88 62 H126" marker-end="url(#ah)"/>
+        <rect class="node" x="130" y="32" width="154" height="60" rx="10"/><text x="207" y="58" text-anchor="middle" class="t-b">Assemble</text><text x="207" y="78" text-anchor="middle" class="t-xs t-muted">complete response</text>
+        <path class="ln" d="M284 62 H322" marker-end="url(#ah)"/>
+        <rect class="node-accent" x="326" y="32" width="174" height="60" rx="10"/><text x="413" y="66" text-anchor="middle" class="t-mono">post_model_call</text>
+        <path class="ln" d="M500 62 H538" marker-end="url(#ah)"/>
+        <rect class="node-dash" x="542" y="32" width="160" height="60" rx="10"/><text x="622" y="58" text-anchor="middle" class="t-b">Agent processing</text><text x="622" y="78" text-anchor="middle" class="t-xs t-muted">tools / next model call</text>
+        <path class="ln" d="M702 62 H740" marker-end="url(#ah)"/>
+        <rect class="node-accent" x="744" y="32" width="150" height="60" rx="10"/><text x="819" y="66" text-anchor="middle" class="t-mono">output</text>
+        <path class="ln ln-allow" d="M894 62 H932" marker-end="url(#ah-allow)"/>
+        <rect class="fill-allow" x="936" y="32" width="172" height="60" rx="10"/><text x="1022" y="58" text-anchor="middle" class="t-b">Release</text><text x="1022" y="78" text-anchor="middle" class="t-xs">only permitted content</text>
+        <text x="819" y="119" text-anchor="middle" class="t-xs t-muted">hold caller output here</text>
+      </svg>
+    </div>
+    <div class="grid g2" data-step="1">
+      <div class="card">
+        <div class="label">Declared alternative</div>
+        <h3>Unbuffered output</h3>
+        <p>Hosts may declare <code>buffered_output: false</code>. A later deny cannot retract content already released.</p>
+      </div>
+      <div class="card">
+        <div class="label">Optional incremental evaluation</div>
+        <h3>Check prefixes or windows</h3>
+        <p>Declare how much content may be exposed ahead of a verdict. A deny ends the stream; unreleased or unevaluated content cannot persist.</p>
+      </div>
+    </div>
+    <div class="callout" data-step="2">The tradeoff is explicit: <b>latency vs. pre-verdict exposure</b>. Preview channels, observers, and callbacks outside the enforcement boundary count as callers too.</div>
+  </div>
+  <div class="foot"><span class="area">Appendix · Interception points</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>There are two gates: full model-response assembly before post_model_call, and withholding caller output until the output verdict permits release. An allowed model response can lead to more tools or model calls before final output.</p>
+    <p>A host may declare unbuffered output. Incremental mediation is a further option: each evaluated prefix or window is an ordinary emission, with a declared exposure bound. Do not equate any unbuffered host with incremental evaluation.</p>
+    <p>On incremental denial, withhold all content not already released, including previously allowed content still in a buffer. Unevaluated content fails closed at end of stream. These rules also gate durable incorporation.</p>
+    <p class="small muted">Spec: &sect;12.1 Streaming model responses, &sect;12.1a Streaming to the caller.</p>
+  </aside>
+</section>
+
+<!-- ============ Appendix: Failing safely ============ -->
+<section class="slide" data-title="Failing safely">
+  <div class="kicker">Verdict configuration</div>
+  <h2>Failing safely</h2>
+  <p class="lede">When an interceptor breaks, the default is deny. An operator can let a binding fail open, but never silently.</p>
+  <div class="body row" style="gap:24px; align-items:flex-start">
+    <div class="col fill" style="gap:0">
+      <div class="card soft-card" style="padding:14px 18px">
+        <div class="label">An interceptor fails</div>
+        <div class="row" style="gap:10px; flex-wrap:wrap">
+          <span class="chip">Raises or panics</span>
+          <span class="chip">Exceeds its timeout (default 5000 ms)</span>
+          <span class="chip">Returns an invalid verdict</span>
+        </div>
+      </div>
+      <svg width="740" height="44" viewBox="0 0 740 44" aria-hidden="true">
+        <path class="ln ln-deny" d="M370,0 C370,24 182,18 182,40" marker-end="url(#ah-deny)"/>
+        <path class="ln ln-allow ln-dash" d="M370,0 C370,24 558,18 558,40" marker-end="url(#ah-allow)" data-step="1"/>
+      </svg>
+      <div class="grid g2">
+        <div class="card">
+          <div class="label"><code>on_error: deny</code> &middot; default</div>
+          <span class="v v-deny v-lg">deny</span>
+          <ul class="list tight" style="margin-top:12px">
+            <li><code>host_error:interceptor_failed</code></li>
+            <li><code>host_error:interceptor_timeout</code></li>
+            <li><code>host_error:verdict_invalid</code></li>
+          </ul>
+          <p class="small muted" style="margin-top:10px">The deny takes the failing interceptor's slot. Other verdicts still compose normally.</p>
+        </div>
+        <div class="card" data-step="1">
+          <div class="label"><code>on_error: continue</code> &middot; opt-in</div>
+          <div class="row center" style="gap:8px; flex-wrap:wrap"><span class="v v-allow v-lg">allow</span><code>host_warning:control_failed</code></div>
+          <ul class="list tight" style="margin-top:12px">
+            <li>Recorded with <code>substituted_for</code></li>
+            <li>The user or agent is told the control is down</li>
+            <li>Stated in the host's conformance claim</li>
+          </ul>
+          <p class="small muted" style="margin-top:10px">An administrator sets it per binding, as the document default, or at registration. Host code can't change the default.</p>
+        </div>
+      </div>
+    </div>
+    <div class="card accent-card" data-step="2" style="width:340px; flex:none">
+      <h3>Best-effort cannot bypass</h3>
+      <ul class="list tight" style="margin-top:12px">
+        <li>The host can't build the context <span class="tiny muted mono">context_invalid</span></li>
+        <li>Enforced size or depth limits are exceeded</li>
+        <li>Nothing is bound at the point <span class="tiny muted mono">no_interceptor</span></li>
+        <li>The host cancels the interceptor</li>
+        <li>A transform can't be applied</li>
+        <li>Any approval resolver failure</li>
+        <li>An explicit deny, liftable or not</li>
+      </ul>
+      <p class="small muted" style="margin-top:12px"><code>on_error</code> covers only the three failures on the left. Composition and approval keep their own rules.</p>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Verdict configuration options</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Three things can go wrong with an interceptor: it throws, it times out, or it returns something that fails validation. By default each becomes a deny with a specific <code>host_error</code> reason, in that interceptor's slot.</p>
+    <p>Some controls are advisory, so an administrator can set <code>on_error: continue</code> on a binding. The failure then becomes an allow with a <code>control_failed</code> warning. It is recorded, the principal is notified, and the host must disclose it in its conformance claim. Silent continuation is not conformant.</p>
+    <p>Everything else stays fail closed, whatever <code>on_error</code> says.</p>
+    <p>Resource limits are host-tunable. The recommended defaults are 5 MiB and 128 nesting levels, not universal conformance thresholds. Breaching an enforced limit must deny with context_invalid, never crash or silently truncate.</p>
+    <p class="small muted">Spec: &sect;6.3 failure handling, &sect;6.3.1 on_error, &sect;7.7.3 timeouts, &sect;12.3 Resource bounds. Enforcement behavior shown here assumes enforce mode.</p>
+  </aside>
+</section>
+
+<!-- ============ Appendix: Evaluate before enforce ============ -->
+<section class="slide" data-title="Evaluate before enforce">
+  <div class="kicker">Verdict configuration</div>
+  <h2>Evaluate before you enforce</h2>
+  <p class="lede">Run the same interceptors in <code>evaluate_only</code> to see what they would do, without changing what the agent does.</p>
+  <div class="body row" style="gap:28px; align-items:flex-start">
+    <div class="col fill" style="gap:14px">
+      <table class="t">
+        <thead><tr><th>Combined verdict</th><th><code>enforce</code></th><th><code>evaluate_only</code></th></tr></thead>
+        <tbody>
+          <tr><td><span class="v v-allow">allow</span></td><td>Proceeds</td><td>Proceeds</td></tr>
+          <tr><td><span class="v v-xf">transform</span></td><td>Applies the replacement</td><td>Validates it, doesn't apply it; proceeds</td></tr>
+          <tr><td><span class="v v-lift">deny + approval</span></td><td>Asks the approval resolver</td><td>Never asks; proceeds</td></tr>
+          <tr><td><span class="v v-deny">deny</span></td><td>Blocks the action</td><td>Records it; proceeds</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">Records are written in both modes and carry <code>mode</code>. An <code>evaluate_only</code> result must never be presented downstream as enforcement.</div>
+      <p class="small muted">Sequential transforms are not applied in evaluate-only mode, so later controls see the original content. Results can differ from an enforced transform chain.</p>
+    </div>
+    <div class="col" data-step="1" style="width:330px; flex:none; gap:10px">
+      <div class="label">A staged rollout</div>
+      <div class="card" style="padding:14px 16px"><span class="pill" style="border:none; padding:0"><span class="n">1</span><b>Bind in <code>evaluate_only</code></b></span><p class="small muted" style="margin-top:6px">Real traffic, no behavior change.</p></div>
+      <div class="row" style="justify-content:center"><svg width="20" height="22" aria-hidden="true"><path class="ln ln-accent" d="M10,0 L10,18" marker-end="url(#ah-accent)"/></svg></div>
+      <div class="card" style="padding:14px 16px"><span class="pill" style="border:none; padding:0"><span class="n">2</span><b>Review the records</b></span><p class="small muted" style="margin-top:6px">What would have been denied, changed, or sent for approval?</p></div>
+      <div class="row" style="justify-content:center"><svg width="20" height="22" aria-hidden="true"><path class="ln ln-accent" d="M10,0 L10,18" marker-end="url(#ah-accent)"/></svg></div>
+      <div class="card accent-card" style="padding:14px 16px"><span class="pill" style="border:none; padding:0; background:none"><span class="n">3</span><b>Switch to <code>enforce</code></b></span><p class="small muted" style="margin-top:6px">Same interceptors, same records, now binding.</p></div>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Verdict configuration options</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>Every host must support two modes. In <code>enforce</code> the combined verdict is honored. In <code>evaluate_only</code> the host runs the same interceptors under the same profile and records their verdicts, but proceeds as if the result were allow.</p>
+    <p>Transforms are still validated, so a broken redactor shows up before you turn it on. The approval resolver is never consulted, so no one gets paged for a dry run. In the record, the enforced identity equals the input identity.</p>
+    <p>That supports a staged rollout: shadow, review, then enforce. It is not a safety boundary or a perfect simulation of an enforced transform chain. A host selects mode per session or per interception point; a declaration sets configuration.mode.</p>
+    <p class="small muted">Spec: &sect;8 enforcement mode, &sect;10.3 record.</p>
+  </aside>
+</section>
+
+<!-- ============ 12. Configure without code changes ============ -->
+<section class="slide" data-title="Configure without code changes">
+  <div class="kicker">Declarative configuration</div>
+  <h2>Configure without code changes</h2>
+  <p class="lede">A host declaration is one JSON document an operator owns. It picks which interceptors run, where, in what order, and with which settings.</p>
+  <div class="body row" style="gap:24px; align-items:flex-start">
+    <div class="col" style="gap:6px; width:610px; flex:none">
+      <div class="label">support-agent.hooks.json</div>
+<pre class="code sm">{
+  "spec": "agent-hooks/draft",
+  "id": "support-agent-prod",
+  "configuration": {
+    "mode": "enforce",
+    "composition": { "profile": "sequential/first_deny", "on_approval": "resume" },
+    "approval": { "resolver": "manager-approval" },
+    "timeouts": { "interceptor_ms": 5000 }
+  },
+  "bindings": [
+»   { "id": "budget", "kind": "contoso.budget",
+»     "at": ["agent_startup", "input", "pre_model_call",
+»            "pre_tool_call", "post_tool_call", "output", "agent_shutdown"] },
+»   { "id": "pii", "kind": "contoso.pii_redactor",
+»     "at": ["input", "post_model_call", "output"] },
+»   { "id": "email-policy", "kind": "contoso.email_policy",
+»     "at": ["pre_tool_call"],
+»     "config": { "allowed_domains": ["contoso.com"] } },
+»   { "id": "secret-scan", "kind": "contoso.secret_scan",
+»     "at": ["post_tool_call"], "on_error": "continue" }
+  ]
+}</pre>
+    </div>
+    <div class="col fill" style="gap:14px">
+      <div data-step="1">
+        <div class="label">What the host wires up</div>
+        <table class="t compact">
+          <thead><tr><th>Point</th><th class="c">budget</th><th class="c">pii</th><th class="c">email-policy</th><th class="c">secret-scan</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">agent_startup</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+            <tr><td class="mono">input</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+            <tr><td class="mono">pre_model_call</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+            <tr><td class="mono">post_model_call</td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+            <tr><td class="mono">pre_tool_call</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+            <tr><td class="mono">post_tool_call</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot"></span></td></tr>
+            <tr><td class="mono">output</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+            <tr><td class="mono">agent_shutdown</td><td class="c"><span class="mdot"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td><td class="c"><span class="mdot off"></span></td></tr>
+          </tbody>
+        </table>
+        <p class="tiny muted" style="margin-top:6px"><code>at</code> selects interception points. Array order is run order.</p>
+      </div>
+      <ul class="list tight" data-step="2">
+        <li><code>kind</code> is a key the host's code resolves. Never a path, URL, or module.</li>
+        <li>It selects what the host already supports; it can't add behavior.</li>
+        <li>A bad document is refused whole, before anything runs.</li>
+        <li>Once loaded, the configuration is sealed.</li>
+        <li>Configuring in code is still conformant, with identical records.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="area">Declarative configuration</span><span>Agent Hooks</span></div>
+  <aside class="notes">
+    <p>This is an illustrative declaration behind the end-to-end example. The contoso kinds are fictional registry entries, not built-in interceptors. Only <code>spec</code> and <code>bindings</code> are required; omitted settings use the specification's defaults. An operator's document can omit <code>surface</code>.</p>
+    <p>Each binding names a <code>kind</code>, which the host looks up in a registry it controls in code. The document can't load code or widen what the host supports.</p>
+    <p>Loading is a fixed pipeline. Any problem refuses the whole document with a <code>declaration_error</code> class, before any emission and without echoing secrets from <code>config</code>. Nothing is partially applied. Once built, the emitter refuses later reconfiguration, so the declaration is what actually ran.</p>
+    <p>Hosts that configure in code remain conformant, and records look the same either way.</p>
+    <p class="small muted">Spec: &sect;7.7 host declaration (&sect;7.7.3 members, &sect;7.7.5 bindings, &sect;7.7.6 refusal, &sect;7.7.7 sealing).</p>
+  </aside>
+</section>
+
+
+
+
+</div>
+</main>
+
+<div class="notes-panel" id="notesPanel" aria-live="polite"></div>
+<div class="notice" id="notice" role="alert" hidden></div>
+<div class="help" id="help" role="dialog" aria-label="Keyboard shortcuts">
+  <div class="card">
+    <h3>Keyboard shortcuts</h3>
+    <table>
+      <tr><td><kbd>→</kbd> <kbd>Space</kbd></td><td>Next step or slide</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>Backspace</kbd></td><td>Previous step or slide</td></tr>
+      <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First or last slide</td></tr>
+      <tr><td><kbd>N</kbd></td><td>Speaker notes</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Full screen</td></tr>
+      <tr><td><kbd>T</kbd></td><td>Light or dark theme</td></tr>
+      <tr><td><kbd>?</kbd> <kbd>Esc</kbd></td><td>Show or hide this help</td></tr>
+    </table>
+    <p class="small muted" style="margin-top:12px">Print (Ctrl+P) exports one slide per page, each at its final step.</p>
+  </div>
+</div>
+
+<nav class="bar" aria-label="Slide controls">
+  <button class="btn" id="prevBtn" aria-label="Previous">&#8592;</button>
+  <span class="counter" id="counter" aria-live="polite">1 / 19</span>
+  <button class="btn" id="nextBtn" aria-label="Next">&#8594;</button>
+  <span class="grow" id="barTitle"></span>
+  <button class="btn" id="notesBtn">Notes</button>
+  <button class="btn" id="themeBtn">Theme</button>
+  <button class="btn" id="fsBtn">Full screen</button>
+  <button class="btn" id="helpBtn" aria-label="Help">?</button>
+</nav>
+
+<script>
+(() => {
+  const stage = document.getElementById("stage");
+  const slides = Array.from(stage.querySelectorAll(":scope > section.slide"));
+  const $ = (id) => document.getElementById(id);
+  const progress = $("progress"), counter = $("counter"), barTitle = $("barTitle");
+  const notesPanel = $("notesPanel"), help = $("help");
+  let cur = 0, step = 0;
+
+  /* ---- JSON highlighting; a leading » marks a highlighted line ---- */
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const tok = /("(?:[^"\\]|\\.)*")(\s*:)?|(\/\/.*$)|(\b(?:true|false|null)\b|(?<![\w.:-])-?\d+(?:\.\d+)?(?![\w.-]))/g;
+  function hlLine(line) {
+    let out = "", last = 0, m;
+    tok.lastIndex = 0;
+    while ((m = tok.exec(line))) {
+      out += esc(line.slice(last, m.index));
+      if (m[1]) out += m[2] ? `<span class="k">${esc(m[1])}</span>${esc(m[2])}` : `<span class="s">${esc(m[1])}</span>`;
+      else if (m[3]) out += `<span class="c">${esc(m[3])}</span>`;
+      else out += `<span class="n">${esc(m[4])}</span>`;
+      last = tok.lastIndex;
+    }
+    return out + esc(line.slice(last));
+  }
+  document.querySelectorAll("pre.code").forEach((pre) => {
+    const lines = pre.textContent.replace(/^\n/, "").replace(/\s+$/, "").split("\n");
+    pre.innerHTML = lines.map((raw) => {
+      let line = raw, cls = "ln-row";
+      if (line.startsWith("\u00bb")) { cls += " hl"; line = " " + line.slice(1); }
+      return `<span class="${cls}">${hlLine(line) || " "}</span>`;
+    }).join("");
+  });
+
+  /* ---- fragments ---- */
+  const frags = (s) => Array.from(s.querySelectorAll("[data-step],[data-until]"));
+  function maxStep(s) {
+    let m = 0, u = -1;
+    frags(s).forEach((el) => {
+      if (el.dataset.step != null) m = Math.max(m, +el.dataset.step);
+      if (el.dataset.until != null) u = Math.max(u, +el.dataset.until);
+    });
+    return m > 0 ? m : u + 1;
+  }
+  function apply(s, st) {
+    frags(s).forEach((el) => {
+      const from = el.dataset.step != null ? +el.dataset.step : 0;
+      const to = el.dataset.until != null ? +el.dataset.until : Infinity;
+      el.classList.toggle("is-hidden", !(st >= from && st <= to));
+      el.classList.toggle("is-current", el.dataset.step != null && from === st);
+    });
+  }
+
+  /* ---- navigation ---- */
+  function go(i, st) {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    const ms = maxStep(slides[i]);
+    st = st === "end" ? ms : Math.max(0, Math.min(ms, st | 0));
+    slides.forEach((s, k) => {
+      const on = k === i;
+      s.classList.toggle("active", on);
+      s.toggleAttribute("inert", !on);
+      s.setAttribute("aria-hidden", on ? "false" : "true");
+    });
+    cur = i; step = st;
+    apply(slides[i], st);
+    counter.textContent = `${i + 1} / ${slides.length}`;
+    barTitle.textContent = slides[i].dataset.title || "";
+    progress.style.width = `${((i + (st + 1) / (ms + 1)) / slides.length) * 100}%`;
+    $("prevBtn").disabled = i === 0 && st === 0;
+    $("nextBtn").disabled = i === slides.length - 1 && st === ms;
+    const notes = slides[i].querySelector("aside.notes");
+    notesPanel.innerHTML = `<div class="label">Speaker notes &middot; ${i + 1}</div>` +
+      (notes ? notes.innerHTML : `<p class="muted">No notes for this slide.</p>`);
+    const h = `#/${i + 1}/${st}`;
+    if (location.hash !== h) history.replaceState(null, "", h);
+  }
+  const next = () => step < maxStep(slides[cur]) ? go(cur, step + 1) : cur < slides.length - 1 && go(cur + 1, 0);
+  const prev = () => step > 0 ? go(cur, step - 1) : cur > 0 && go(cur - 1, "end");
+  function fromHash() {
+    const m = location.hash.match(/^#\/(\d+)(?:\/(\d+))?/);
+    if (m) go(+m[1] - 1, m[2] ? +m[2] : 0); else go(0, 0);
+  }
+
+  /* ---- scaling ---- */
+  function fit() {
+    const s = Math.min((innerWidth - 32) / 1280, (innerHeight - 48 - 32) / 720);
+    stage.style.setProperty("--scale", Math.max(0.2, s));
+  }
+
+  /* ---- toggles ---- */
+  const toggleNotes = () => document.body.classList.toggle("show-notes");
+  const toggleHelp = (on) => document.body.classList.toggle("show-help", on);
+  function toggleTheme() {
+    const r = document.documentElement;
+    r.setAttribute("data-theme", r.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  }
+  async function toggleFs() {
+    const notice = $("notice");
+    notice.hidden = true;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      else throw new Error("Fullscreen is unavailable in this browser.");
+    } catch (error) {
+      notice.textContent = `Unable to enter or exit fullscreen: ${error.message}`;
+      notice.hidden = false;
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest("input, textarea, select, [contenteditable=true]")) return;
+    if ((e.key === " " || e.key === "Enter") && e.target.closest("button, a")) return;
+    const helpOpen = document.body.classList.contains("show-help");
+    switch (e.key) {
+      case "ArrowRight": case "ArrowDown": case " ": case "PageDown": case "Enter":
+        if (helpOpen) return; e.preventDefault(); next(); break;
+      case "ArrowLeft": case "ArrowUp": case "PageUp": case "Backspace":
+        if (helpOpen) return; e.preventDefault(); prev(); break;
+      case "Home": e.preventDefault(); go(0, 0); break;
+      case "End": e.preventDefault(); go(slides.length - 1, "end"); break;
+      case "n": case "N": toggleNotes(); break;
+      case "f": case "F": toggleFs(); break;
+      case "t": case "T": toggleTheme(); break;
+      case "?": toggleHelp(); break;
+      case "Escape": toggleHelp(false); $("notice").hidden = true; break;
+    }
+  });
+  $("prevBtn").addEventListener("click", prev);
+  $("nextBtn").addEventListener("click", next);
+  $("notesBtn").addEventListener("click", toggleNotes);
+  $("themeBtn").addEventListener("click", toggleTheme);
+  $("fsBtn").addEventListener("click", toggleFs);
+  $("helpBtn").addEventListener("click", () => toggleHelp());
+  help.addEventListener("click", (e) => { if (e.target === help) toggleHelp(false); });
+  document.querySelectorAll(".bar .btn").forEach((b) => b.addEventListener("mouseup", () => b.blur()));
+
+  let tx = null, ty = null;
+  stage.addEventListener("touchstart", (e) => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+  stage.addEventListener("touchend", (e) => {
+    if (tx == null) return;
+    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) (dx < 0 ? next : prev)();
+    tx = ty = null;
+  });
+
+  window.addEventListener("beforeprint", () => slides.forEach((s) => apply(s, maxStep(s))));
+  window.addEventListener("afterprint", () => { slides.forEach((s) => apply(s, 0)); go(cur, step); });
+  window.addEventListener("resize", fit);
+  window.addEventListener("hashchange", () => {
+    const m = location.hash.match(/^#\/(\d+)(?:\/(\d+))?/);
+    if (m && (+m[1] - 1 !== cur || +(m[2] || 0) !== step)) fromHash();
+  });
+
+  slides.forEach((s) => apply(s, 0));
+  fit();
+  fromHash();
+})();
+</script>
+</body>
+</html>
